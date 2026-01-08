@@ -185,8 +185,8 @@ export class Game {
                         // Dynamic Shape Noise
                         float distortion = getNoise(pNorm, seed * 10.0) * 0.3;
                         
-                        // Scale radius with growth
-                        float radiusGrowth = smoothstep(0.0, 1.0, growth);
+                        // Scale radius with growth - keep thin at core
+                        float radiusGrowth = pow(growth, 4.0);
                         float noisyRadius = BASE_RADIUS * rScale * (1.0 + distortion) * radiusGrowth;
 
                         float dotProd = dot(pNorm, center);

@@ -57,7 +57,7 @@ export const createEarth = (radius, rippleUniformsRef) => {
                     
                     float distortion = getNoise(pNorm, seed * 10.0) * 0.3;
                     
-                    float radiusGrowth = smoothstep(0.0, 1.0, growth);
+                    float radiusGrowth = pow(growth, 4.0);
                     float noisyRadius = BASE_RADIUS * rScale * (1.0 + distortion) * radiusGrowth;
 
                     float dotProd = dot(pNorm, center);

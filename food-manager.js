@@ -24,6 +24,7 @@ export class FoodManager {
             emissiveIntensity: 0.5 
         });
         this.food = new THREE.Mesh(foodGeo, foodMat);
+        this.food.userData.surfaceOffset = 0.5; // Radius
         this.scene.add(this.food);
     }
 
@@ -56,7 +57,7 @@ export class FoodManager {
             tries++;
         }
         
-        this.food.position.copy(pos);
+        this.food.position.copy(pos).setLength(this.EARTH_RADIUS + (this.food.userData.surfaceOffset || 0));
         this.food.lookAt(new THREE.Vector3(0,0,0));
     }
 
@@ -72,8 +73,9 @@ export class FoodManager {
             emissiveIntensity: 0.5 
         });
         const mesh = new THREE.Mesh(geo, mat);
+        mesh.userData.surfaceOffset = 0.25; // Radius
         mesh.position.copy(position);
-        mesh.position.normalize().multiplyScalar(this.EARTH_RADIUS);
+        mesh.position.normalize().multiplyScalar(this.EARTH_RADIUS + 0.25);
         
         this.scene.add(mesh);
         this.bonusFoods.push(mesh);
@@ -102,13 +104,10 @@ export class FoodManager {
     }
     
     applyTerrainToFood(mesh, terrainFn) {
-        // Reset to base surface
-        mesh.position.setLength(this.EARTH_RADIUS);
-        // Calculate offset
+        const offset = mesh.userData.surfaceOffset || 0;
+        // Calculate offset from terrain and apply logical offset
         const h = terrainFn(mesh.position);
-        if (Math.abs(h) > 0.01) {
-            mesh.position.setLength(this.EARTH_RADIUS + h);
-        }
+        mesh.position.setLength(this.EARTH_RADIUS + h + offset);
     }
     
     checkCollisions(snakeHeadPos, currentRadius) {

@@ -30,6 +30,7 @@ export class Snake {
         const headGeo = new THREE.BoxGeometry(0.8, 0.4, 0.8);
         const headMat = new THREE.MeshStandardMaterial({ color: 0x00ff00, emissive: 0x004400 });
         this.head = new THREE.Mesh(headGeo, headMat);
+        this.head.userData.surfaceOffset = 0.2; // Half height (0.4/2)
         this.scene.add(this.head);
 
         // --- Add cute eyes ---
@@ -120,6 +121,7 @@ export class Snake {
         const color = this.getSegmentColor(this.segments.length);
         const segMat = new THREE.MeshStandardMaterial({ color: color });
         const segment = new THREE.Mesh(segGeo, segMat);
+        segment.userData.surfaceOffset = 0.15; // Half height (0.3/2)
         this.scene.add(segment);
         this.segments.push(segment);
     }
@@ -192,7 +194,8 @@ export class Snake {
         this.EARTH_RADIUS = currentEarthRadius; // Update local ref
         
         // 0. Reset head to surface (Physics Step)
-        this.head.position.setLength(this.EARTH_RADIUS);
+        // Offset by half height to sit ON surface
+        this.head.position.setLength(this.EARTH_RADIUS + (this.head.userData.surfaceOffset || 0));
 
         // 1. Parallel Transport Movement Logic
         const headPos = this.head.position.clone();
@@ -261,10 +264,10 @@ export class Snake {
 
     applyRippleDisplacement(mesh, rippleFn) {
         const h = rippleFn(mesh.position);
-        if (Math.abs(h) > 0.01) {
-            // Move along normal (from center 0,0,0)
-            mesh.position.setLength(this.EARTH_RADIUS + h);
-        }
+        // Always apply height + offset to ensure it stays on top of dynamic terrain
+        const offset = mesh.userData.surfaceOffset || 0;
+        // Move along normal (from center 0,0,0)
+        mesh.position.setLength(this.EARTH_RADIUS + h + offset);
     }
 
     updateSegments() {

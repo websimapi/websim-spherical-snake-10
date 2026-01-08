@@ -109,7 +109,8 @@ export function getIslandHeight(pos, islands, earthRadius) {
         const distortion = getNoise(pNorm, seed * 10.0) * 0.3;
         
         // Scale radius with growth so it starts small (core) and expands
-        const radiusGrowth = smoothstep(0.0, 1.0, growth);
+        // Use power to keep it very thin deep down (root) and bloom at surface
+        const radiusGrowth = Math.pow(growth, 4.0);
         const noisyRadius = BASE_RADIUS * rScale * (1.0 + distortion) * radiusGrowth;
 
         // Calculate angular distance
