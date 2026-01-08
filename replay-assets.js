@@ -57,8 +57,8 @@ export const createEarth = (radius, rippleUniformsRef) => {
                     
                     float distortion = getNoise(pNorm, seed * 10.0) * 0.3;
                     
-                    float radiusGrowth = pow(growth, 4.0);
-                    float noisyRadius = BASE_RADIUS * rScale * (1.0 + distortion) * radiusGrowth;
+                    float sizeFactor = 0.2 + 0.8 * growth; 
+                    float noisyRadius = BASE_RADIUS * rScale * (1.0 + distortion) * sizeFactor;
 
                     float dotProd = dot(pNorm, center);
                     float angle = acos(clamp(dotProd, -1.0, 1.0));
@@ -71,11 +71,11 @@ export const createEarth = (radius, rippleUniformsRef) => {
                         float smoothShape = t * t * (3.0 - 2.0 * t);
                         float finalShape = pow(smoothShape, 0.5);
                         
-                        float startH = -uBaseRadius * 0.9;
-                        float endH = finalShape * BASE_MAX_H * hScale;
-                        
-                        float easeGrowth = growth * growth * (3.0 - 2.0 * growth);
-                        float islandH = mix(startH, endH, easeGrowth);
+                        float rise = growth * growth; 
+                        float depth = -uBaseRadius * 0.9 * (1.0 - rise);
+                        float shapeH = finalShape * BASE_MAX_H * hScale * sizeFactor;
+
+                        float islandH = depth + shapeH;
                         
                         if (h == -1000.0) {
                             h = islandH;

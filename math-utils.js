@@ -108,10 +108,9 @@ export function getIslandHeight(pos, islands, earthRadius) {
         // Add shape distortion
         const distortion = getNoise(pNorm, seed * 10.0) * 0.3;
         
-        // Scale radius with growth so it starts small (core) and expands
-        // Use power to keep it very thin deep down (root) and bloom at surface
-        const radiusGrowth = Math.pow(growth, 4.0);
-        const noisyRadius = BASE_RADIUS * rScale * (1.0 + distortion) * radiusGrowth;
+        // Miniature -> Big Logic
+        const sizeFactor = 0.2 + 0.8 * growth; 
+        const noisyRadius = BASE_RADIUS * rScale * (1.0 + distortion) * sizeFactor;
 
         // Calculate angular distance
         const dotProd = pNorm.dot(isle.center);
@@ -126,18 +125,12 @@ export function getIslandHeight(pos, islands, earthRadius) {
             const smoothShape = t * t * (3.0 - 2.0 * t); // Smoothstep
             const finalShape = Math.pow(smoothShape, 0.5); // Flatten top
             
-            // Eruption logic:
-            // Starts at -earthRadius (core) and moves to +hScale (surface mountain)
-            // We use an exponential slide for the "ooze" up
-            const startH = -earthRadius * 0.9;
-            const endH = finalShape * BASE_MAX_H * hScale;
+            // Rise from Core Logic
+            const rise = growth * growth; 
+            const depth = -earthRadius * 0.9 * (1.0 - rise);
+            const shapeH = finalShape * BASE_MAX_H * hScale * sizeFactor;
             
-            // Smooth growth transition
-            // growth 0 -> 1
-            const easeGrowth = growth * growth * (3.0 - 2.0 * growth);
-            
-            // Mix from core to surface
-            const islandH = startH * (1.0 - easeGrowth) + endH * easeGrowth;
+            const islandH = depth + shapeH;
             
             // Blend islands if overlapping (take max)
             if (h === -1000.0) {
