@@ -28,22 +28,43 @@ export const createEarth = (radius, rippleUniformsRef) => {
             uniform vec4 uIslands[16];
             uniform float uBaseRadius;
 
+            float hash(vec3 p) {
+                return fract(sin(dot(p, vec3(12.9898, 78.233, 54.53))) * 43758.5453);
+            }
+
             float getIslandH(vec3 pos) {
                 float h = 0.0;
                 vec3 pNorm = normalize(pos);
-                float ISLAND_RADIUS_ANGLE = 0.3;
-                float MAX_H = 1.5;
+                float BASE_RADIUS = 0.4;
+                float BASE_MAX_H = 1.0;
                 
                 for(int i=0; i<16; i++) {
                     if(uIslands[i].w <= 0.0) continue;
                     vec3 center = uIslands[i].xyz;
+                    
+                    float seed = hash(center);
+                    float rScale = 0.8 + 0.5 * seed;
+                    float hScale = 0.6 + 0.5 * fract(seed * 1.23);
+                    
+                    float growth = uIslands[i].w;
+                    float currentRadius = BASE_RADIUS * rScale * growth;
+                    float currentMaxH = BASE_MAX_H * hScale * growth;
+                    
+                    if (currentRadius < 0.001) continue;
+
                     float dotProd = dot(pNorm, center);
                     float angle = acos(clamp(dotProd, -1.0, 1.0));
                     
-                    if(angle < ISLAND_RADIUS_ANGLE) {
-                        float d = angle / ISLAND_RADIUS_ANGLE;
-                        float shape = (cos(d * 3.14159) + 1.0) * 0.5;
-                        h += shape * MAX_H * uIslands[i].w;
+                    if(angle < currentRadius) {
+                        float d = angle / currentRadius;
+                        
+                        // Smoothstep bell curve
+                        float t = 1.0 - d;
+                        float shape = t * t * (3.0 - 2.0 * t);
+                        // Flatten top
+                        shape = pow(shape, 0.5);
+                        
+                        h += shape * currentMaxH;
                     }
                 }
                 return h;

@@ -73,34 +73,51 @@ export function getRippleHeight(pos, time, centers, startTimes, intensities, ear
 export function getIslandHeight(pos, islands, earthRadius) {
     let h = 0.0;
     const pNorm = pos.clone().normalize();
-    const ISLAND_MAX_HEIGHT = 1.5; 
-    const ISLAND_RADIUS_ANGLE = 0.3; // radians
+    const BASE_MAX_H = 1.0; 
+    const BASE_RADIUS = 0.4; 
+
+    // Simple pseudo-random hash to match shader logic
+    const hash = (v) => {
+        // Use absolute values to avoid negative zero issues, simple dot product hash
+        const dot = v.x * 12.9898 + v.y * 78.233 + v.z * 54.53;
+        const sinVal = Math.sin(dot);
+        return Math.abs(sinVal * 43758.5453) % 1;
+    };
 
     for(let i=0; i<islands.length; i++) {
         const isle = islands[i]; // { center: Vector3, progress: 0..1 }
         
+        // Use center to create unique characteristics for this island
+        const seed = hash(isle.center);
+        const rScale = 0.8 + 0.5 * seed; // Variation in width
+        const hScale = 0.6 + 0.5 * ((seed * 1.23) % 1); // Variation in height
+
+        // Oozing effect: Grow radius and height with progress
+        // Use smoothstep-like growth for progress to make it feel viscous
+        const growth = isle.progress;
+        
+        const currentRadius = BASE_RADIUS * rScale * Math.min(1.0, growth);
+        const currentMaxH = BASE_MAX_H * hScale * Math.min(1.0, growth);
+
+        if (currentRadius <= 0.001) continue;
+
         const dotProd = pNorm.dot(isle.center);
-        // dotProd 1.0 is center, decreasing as we go out
-        // We want a bump function. 
-        // angle = acos(dot)
-        // height = smoothstep(radius, 0, angle) * maxH * progress
-        
-        // simpler approximation using dot directly for performance
-        // if dot > cos(radius)
-        
-        // Let's use cosine falloff
-        // angle 0 -> 1.0
-        // angle RADIUS -> 0.0
-        
         const angle = Math.acos(Math.max(-1.0, Math.min(1.0, dotProd)));
         
-        if (angle < ISLAND_RADIUS_ANGLE) {
-            // Normalized distance from center 0..1
-            const d = angle / ISLAND_RADIUS_ANGLE; 
-            // Cosine shape: (cos(d*PI) + 1) * 0.5
-            const shape = (Math.cos(d * Math.PI) + 1.0) * 0.5;
+        if (angle < currentRadius) {
+            const d = angle / currentRadius;
             
-            h += shape * ISLAND_MAX_HEIGHT * isle.progress;
+            // Shape function: smoothstep(1, 0, d)
+            // t goes from 1 (center) to 0 (edge)
+            const t = 1.0 - d;
+            // smoothstep formula: t * t * (3 - 2 * t)
+            const smoothShape = t * t * (3.0 - 2.0 * t);
+            
+            // Flatten the top to make it less pointy and more land-like
+            // sqrt (pow 0.5) pushes values closer to 1, widening the peak
+            const finalShape = Math.pow(smoothShape, 0.5);
+            
+            h += finalShape * currentMaxH;
         }
     }
     return h;
