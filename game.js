@@ -157,47 +157,60 @@ export class Game {
                 float hash(vec3 p) {
                     return fract(sin(dot(p, vec3(12.9898, 78.233, 54.53))) * 43758.5453);
                 }
+                
+                float getNoise(vec3 p, float seed) {
+                    float s = 4.0;
+                    return sin(p.x * s + seed) * cos(p.y * s + seed) * sin(p.z * s);
+                }
 
                 float getIslandH(vec3 pos) {
-                    float h = 0.0;
+                    float h = -1000.0;
+                    bool hasIsland = false;
+                    
                     vec3 pNorm = normalize(pos);
-                    float BASE_RADIUS = 0.4;
+                    float BASE_RADIUS = 0.5;
                     float BASE_MAX_H = 1.0;
                     
                     for(int i=0; i<16; i++) {
-                        if(uIslands[i].w <= 0.0) continue;
+                        // We check length of center vector to see if active, though w is progress
+                        if(length(uIslands[i].xyz) < 0.1) continue;
                         
                         vec3 center = uIslands[i].xyz;
-                        
-                        // Unique properties
                         float seed = hash(center);
-                        float rScale = 0.8 + 0.5 * seed;
-                        float hScale = 0.6 + 0.5 * fract(seed * 1.23);
+                        float rScale = 0.8 + 0.4 * seed;
+                        float hScale = 0.8 + 0.4 * fract(seed * 1.23);
                         
-                        // Oozing Growth
                         float growth = uIslands[i].w;
-                        float currentRadius = BASE_RADIUS * rScale * growth;
-                        float currentMaxH = BASE_MAX_H * hScale * growth;
-
-                        if (currentRadius < 0.001) continue;
+                        
+                        // Dynamic Shape Noise
+                        float distortion = getNoise(pNorm, seed * 10.0) * 0.3;
+                        float noisyRadius = BASE_RADIUS * rScale * (1.0 + distortion);
 
                         float dotProd = dot(pNorm, center);
                         float angle = acos(clamp(dotProd, -1.0, 1.0));
                         
-                        if(angle < currentRadius) {
-                            float d = angle / currentRadius;
+                        if(angle < noisyRadius) {
+                            hasIsland = true;
+                            float d = angle / noisyRadius;
                             
-                            // Smoothstep curve (1.0 at center, 0.0 at edge)
                             float t = 1.0 - d;
-                            float shape = t * t * (3.0 - 2.0 * t);
+                            float smoothShape = t * t * (3.0 - 2.0 * t);
+                            float finalShape = pow(smoothShape, 0.5);
                             
-                            // Flatten top (bulge out)
-                            shape = pow(shape, 0.5);
+                            // Eruption from core Logic
+                            float startH = -uBaseRadius * 0.9;
+                            float endH = finalShape * BASE_MAX_H * hScale;
                             
-                            h += shape * currentMaxH;
+                            float easeGrowth = growth * growth * (3.0 - 2.0 * growth);
+                            float islandH = mix(startH, endH, easeGrowth);
+                            
+                            if (h == -1000.0) {
+                                h = islandH;
+                            } else {\n                                h = max(h, islandH);
+                            }
                         }
                     }
-                    return h;
+                    return hasIsland ? h : 0.0;
                 }
             ` + shader.vertexShader;
 
@@ -268,19 +281,31 @@ export class Game {
                 vec3 cSand = vec3(0.93, 0.87, 0.6);
                 vec3 cDirt = vec3(0.55, 0.4, 0.25);
                 vec3 cGrass = vec3(0.2, 0.7, 0.1);
+                vec3 cMagma = vec3(0.8, 0.2, 0.0);
                 
                 vec3 finalColor = gl_FragColor.rgb;
                 
+                // Land logic (includes rising islands)
+                // If vHeight is significantly negative, it's rising from core (magma/rock)
+                
+                bool isLand = false;
+                
                 if (vHeight > 0.1) {
-                    // Land
-                    float h = vHeight; // 0.1 to 1.5
-                    
-                    // Mixing
+                    isLand = true;
+                    float h = vHeight; 
                     if (h < 0.4) {
                         finalColor = mix(cSand, cDirt, smoothstep(0.2, 0.4, h));
                     } else {
                         finalColor = mix(cDirt, cGrass, smoothstep(0.4, 0.8, h));
                     }
+                } else if (vHeight < -0.1) {
+                    // Rising from deep
+                    isLand = true;
+                    // Visualize depth with heat/darkness
+                    float depth = abs(vHeight);
+                    // Dark rock to magma at core
+                    vec3 cDeepRock = vec3(0.2, 0.1, 0.05);
+                    finalColor = mix(cMagma, cDeepRock, smoothstep(0.0, 5.0, depth));
                 }
                 
                 // Ripples on Water only
@@ -375,11 +400,13 @@ export class Game {
         
         if (landH > 0.1) {
             // Land Tap -> Visual Marker
+            // Ensure visual marker actually sits on the visual terrain
             const markerGeo = new THREE.RingGeometry(0.5, 0.6, 32);
             const markerMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 1.0, side: THREE.DoubleSide });
             const marker = new THREE.Mesh(markerGeo, markerMat);
             
             // Orient to surface
+            // Note: If landH is negative (rising island), this places marker deep. That's correct for "sticking to surface".
             marker.position.copy(point).normalize().multiplyScalar(this.EARTH_RADIUS + landH + 0.05);
             marker.lookAt(new THREE.Vector3(0,0,0));
             this.tapMarkerGroup.add(marker);
@@ -389,6 +416,7 @@ export class Game {
         }
 
         // Water Tap -> Ripple
+        // If landH is negative but close to 0, or just 0, it's water.
         const idx = this.currentRippleIdx;
         this.rippleUniforms.uRippleCenters.value[idx].copy(point);
         this.rippleUniforms.uRippleStartTimes.value[idx] = this.time;
@@ -421,8 +449,8 @@ export class Game {
             const island = this.islands[i];
             if (island.progress < 1.0) {
                 isGrowingAnyIsland = true;
-                // Slower oozing for more organic feel
-                island.progress += dt * 0.1; 
+                // Much slower oozing to appreciate the rising-from-core effect
+                island.progress += dt * 0.05; 
                 if (island.progress > 1.0) island.progress = 1.0;
                 
                 // Update Uniform
@@ -454,6 +482,9 @@ export class Game {
         // Terrain Function
         const terrainFn = (pos) => {
             const islandH = getIslandHeight(pos, this.islands, this.EARTH_RADIUS);
+            // Clamp negative island height (rising from core) to 0 for physics
+            const physicsIslandH = Math.max(0, islandH);
+            
             const rippleH = getRippleHeight(
                 pos,
                 this.time,
@@ -462,7 +493,7 @@ export class Game {
                 this.rippleUniforms.uRippleIntensities.value,
                 this.EARTH_RADIUS
             );
-            return islandH + rippleH;
+            return physicsIslandH + rippleH;
         };
 
         // 1. Update Snake

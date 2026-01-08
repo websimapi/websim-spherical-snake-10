@@ -32,42 +32,57 @@ export const createEarth = (radius, rippleUniformsRef) => {
                 return fract(sin(dot(p, vec3(12.9898, 78.233, 54.53))) * 43758.5453);
             }
 
+            float getNoise(vec3 p, float seed) {
+                float s = 4.0;
+                return sin(p.x * s + seed) * cos(p.y * s + seed) * sin(p.z * s);
+            }
+
             float getIslandH(vec3 pos) {
-                float h = 0.0;
+                float h = -1000.0;
+                bool hasIsland = false;
+                
                 vec3 pNorm = normalize(pos);
-                float BASE_RADIUS = 0.4;
+                float BASE_RADIUS = 0.5;
                 float BASE_MAX_H = 1.0;
                 
                 for(int i=0; i<16; i++) {
-                    if(uIslands[i].w <= 0.0) continue;
-                    vec3 center = uIslands[i].xyz;
+                    if(length(uIslands[i].xyz) < 0.1) continue;
                     
+                    vec3 center = uIslands[i].xyz;
                     float seed = hash(center);
-                    float rScale = 0.8 + 0.5 * seed;
-                    float hScale = 0.6 + 0.5 * fract(seed * 1.23);
+                    float rScale = 0.8 + 0.4 * seed;
+                    float hScale = 0.8 + 0.4 * fract(seed * 1.23);
                     
                     float growth = uIslands[i].w;
-                    float currentRadius = BASE_RADIUS * rScale * growth;
-                    float currentMaxH = BASE_MAX_H * hScale * growth;
                     
-                    if (currentRadius < 0.001) continue;
+                    float distortion = getNoise(pNorm, seed * 10.0) * 0.3;
+                    float noisyRadius = BASE_RADIUS * rScale * (1.0 + distortion);
 
                     float dotProd = dot(pNorm, center);
                     float angle = acos(clamp(dotProd, -1.0, 1.0));
                     
-                    if(angle < currentRadius) {
-                        float d = angle / currentRadius;
+                    if(angle < noisyRadius) {
+                        hasIsland = true;
+                        float d = angle / noisyRadius;
                         
-                        // Smoothstep bell curve
                         float t = 1.0 - d;
-                        float shape = t * t * (3.0 - 2.0 * t);
-                        // Flatten top
-                        shape = pow(shape, 0.5);
+                        float smoothShape = t * t * (3.0 - 2.0 * t);
+                        float finalShape = pow(smoothShape, 0.5);
                         
-                        h += shape * currentMaxH;
+                        float startH = -uBaseRadius * 0.9;
+                        float endH = finalShape * BASE_MAX_H * hScale;
+                        
+                        float easeGrowth = growth * growth * (3.0 - 2.0 * growth);
+                        float islandH = mix(startH, endH, easeGrowth);
+                        
+                        if (h == -1000.0) {
+                            h = islandH;
+                        } else {
+                            h = max(h, islandH);
+                        }
                     }
                 }
-                return h;
+                return hasIsland ? h : 0.0;
             }
         ` + shader.vertexShader;
 
@@ -147,6 +162,11 @@ export const createEarth = (radius, rippleUniformsRef) => {
                 } else {
                     finalColor = mix(cDirt, cGrass, smoothstep(0.4, 0.8, h));
                 }
+            } else if (vHeight < -0.1) {
+                vec3 cMagma = vec3(0.8, 0.2, 0.0);
+                vec3 cDeepRock = vec3(0.2, 0.1, 0.05);
+                float depth = abs(vHeight);
+                finalColor = mix(cMagma, cDeepRock, smoothstep(0.0, 5.0, depth));
             } else {
                 float totalRipple = 0.0;
                 for(int i=0; i<5; i++) {
