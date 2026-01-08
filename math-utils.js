@@ -81,14 +81,19 @@ export function getIslandHeight(pos, islands, earthRadius) {
     // Match GLSL hash
     const hash = (v) => {
         const dot = v.x * 12.9898 + v.y * 78.233 + v.z * 54.53;
-        const sinVal = Math.sin(dot);
-        return Math.abs(sinVal * 43758.5453) % 1;
+        const sinVal = Math.sin(dot) * 43758.5453;
+        return sinVal - Math.floor(sinVal);
     };
 
     // Match GLSL Noise (Simple 3D sine mix)
     const getNoise = (p, seed) => {
         const s = 4.0;
         return Math.sin(p.x * s + seed) * Math.cos(p.y * s + seed) * Math.sin(p.z * s);
+    };
+
+    const smoothstep = (min, max, value) => {
+        const x = Math.max(0, Math.min(1, (value - min) / (max - min)));
+        return x * x * (3 - 2 * x);
     };
 
     for(let i=0; i<islands.length; i++) {
@@ -102,7 +107,10 @@ export function getIslandHeight(pos, islands, earthRadius) {
         
         // Add shape distortion
         const distortion = getNoise(pNorm, seed * 10.0) * 0.3;
-        const noisyRadius = BASE_RADIUS * rScale * (1.0 + distortion);
+        
+        // Scale radius with growth so it starts small (core) and expands
+        const radiusGrowth = smoothstep(0.0, 1.0, growth);
+        const noisyRadius = BASE_RADIUS * rScale * (1.0 + distortion) * radiusGrowth;
 
         // Calculate angular distance
         const dotProd = pNorm.dot(isle.center);
