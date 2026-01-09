@@ -2,7 +2,7 @@ import { jsxDEV } from "react/jsx-dev-runtime";
 import React, { useEffect, useLayoutEffect, useRef, useMemo } from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig, Audio, Sequence } from "remotion";
 import * as THREE from "three";
-import { createEarth, createAtmosphere, createSnakeHead, createFood, createBonusFood, createSegment } from "./replay-assets.js";
+import { createEarth, createTerrainLayer, createAtmosphere, createSnakeHead, createFood, createBonusFood, createSegment } from "./replay-assets.js";
 const ReplayScene = ({ data, isMuted }) => {
   const frameIndex = useCurrentFrame();
   const { width, height, fps } = useVideoConfig();
@@ -54,6 +54,7 @@ const ReplayScene = ({ data, isMuted }) => {
   });
   const objectsRef = useRef({
     earth: null,
+    terrain: null,
     head: null,
     tongue: null,
     food: null,
@@ -87,6 +88,8 @@ const ReplayScene = ({ data, isMuted }) => {
     const r = data.config.initialRadius || 10;
     const earth = createEarth(r, rippleUniforms);
     scene.add(earth);
+    const terrain = createTerrainLayer(r, rippleUniforms);
+    scene.add(terrain);
     const atmosphere = createAtmosphere(r);
     scene.add(atmosphere);
     const { head, tongue } = createSnakeHead();
@@ -95,6 +98,7 @@ const ReplayScene = ({ data, isMuted }) => {
     scene.add(food);
     objectsRef.current = {
       earth,
+      terrain,
       head,
       tongue,
       food,
@@ -222,7 +226,7 @@ const ReplayScene = ({ data, isMuted }) => {
   return /* @__PURE__ */ jsxDEV(AbsoluteFill, { children: [
     /* @__PURE__ */ jsxDEV("div", { ref: containerRef, style: { width: "100%", height: "100%" } }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 289,
+      lineNumber: 295,
       columnNumber: 13
     }),
     /* @__PURE__ */ jsxDEV("div", { style: {
@@ -263,7 +267,7 @@ const ReplayScene = ({ data, isMuted }) => {
           false,
           {
             fileName: "<stdin>",
-            lineNumber: 308,
+            lineNumber: 314,
             columnNumber: 21
           }
         ),
@@ -281,12 +285,12 @@ const ReplayScene = ({ data, isMuted }) => {
           whiteSpace: "nowrap"
         }, children: playerInfo.username }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 324,
+          lineNumber: 330,
           columnNumber: 21
         })
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 302,
+        lineNumber: 308,
         columnNumber: 17
       }),
       /* @__PURE__ */ jsxDEV("div", { style: {
@@ -298,29 +302,29 @@ const ReplayScene = ({ data, isMuted }) => {
         marginTop: "10px"
       }, children: score }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 340,
+        lineNumber: 346,
         columnNumber: 17
       })
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 292,
+      lineNumber: 298,
       columnNumber: 13
     }),
     activeCues.map((cue) => {
       const duration = cue.name === "die" ? 150 : 30;
       return /* @__PURE__ */ jsxDEV(Sequence, { from: cue.frame, durationInFrames: duration, children: /* @__PURE__ */ jsxDEV(Audio, { src: cue.src, volume: isMuted ? 0 : 1 }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 356,
+        lineNumber: 362,
         columnNumber: 25
       }) }, cue.id, false, {
         fileName: "<stdin>",
-        lineNumber: 355,
+        lineNumber: 361,
         columnNumber: 21
       });
     })
   ] }, void 0, true, {
     fileName: "<stdin>",
-    lineNumber: 288,
+    lineNumber: 294,
     columnNumber: 9
   });
 };

@@ -141,5 +141,5 @@ export function getIslandHeight(pos, islands, earthRadius) {
         }
     }
     
-    return hasIsland ? h : 0.0;
+    return hasIsland ? h : -1000.0;
 }
