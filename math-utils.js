@@ -75,7 +75,7 @@ export function getIslandHeight(pos, islands, earthRadius) {
     let hasIsland = false;
 
     const pNorm = pos.clone().normalize();
-    const BASE_RADIUS = 0.8; 
+    const BASE_RADIUS = 1.3; // Broader base for better beaches
 
     const hash = (v) => {
         const dot = v.x * 12.9898 + v.y * 78.233 + v.z * 54.53;
@@ -84,7 +84,7 @@ export function getIslandHeight(pos, islands, earthRadius) {
     };
 
     const getNoise = (p, seed) => {
-        const s = 8.0;
+        const s = 6.0;
         return Math.sin(p.x * s + seed) * Math.cos(p.y * s + seed) * Math.sin(p.z * s);
     };
 
@@ -100,13 +100,13 @@ export function getIslandHeight(pos, islands, earthRadius) {
         const seed = hash(center);
         const growth = isle.progress;
         
-        // Match Shader Logic
+        // Animation
         const scale = 0.05 + 0.95 * smoothstep(0.0, 1.0, growth);
-        const depthOffset = -earthRadius * 0.8 * (1.0 - growth);
+        const depthOffset = -earthRadius * 0.9 * (1.0 - growth);
         
-        // Noise
-        const noise = getNoise(pNorm, seed * 12.0);
-        const radiusVar = 1.0 + noise * 0.25;
+        // Irregular Coastline
+        const noise = getNoise(pNorm, seed * 15.0);
+        const radiusVar = 1.0 + noise * 0.4;
         const currentRadius = BASE_RADIUS * scale * radiusVar;
 
         const dotProd = pNorm.dot(center);
@@ -115,34 +115,26 @@ export function getIslandHeight(pos, islands, earthRadius) {
         if (angle < currentRadius) {
             hasIsland = true;
             
-            const d = angle / currentRadius;
-            const t = 1.0 - d;
+            const d = angle / currentRadius; // 0 (center) to 1 (edge)
+            const t = 1.0 - d;             // 1 (center) to 0 (edge)
             
-            // Shape Profile
-            const topH = 4.0 * scale; 
-            const botH = -6.0 * scale; 
+            // Profile: Plains Top + Jagged Deep Underside
             
-            const profile = Math.pow(t, 0.5);
-
+            // Top: Flat plateau (Plains)
+            // Rises from water level at t=0.45
+            const topH = 1.5 * scale * smoothstep(0.45, 0.65, t);
+            
+            // Bottom: Deep cone (Underside)
+            // Drops deep from water level at t=0.45
+            const underH = -6.0 * scale * (1.0 - smoothstep(0.0, 0.45, t));
+            
             // Detail
-            const pDetail = pNorm.clone().multiplyScalar(6.0);
-            const detail = getNoise(pDetail, seed + 1.0) * 0.8 * scale * t;
+            const detail = getNoise(pNorm.clone().multiplyScalar(12.0), seed + 5.0) * 0.3 * scale;
             
-            // Base Mix
-            const baseH = botH + (topH - botH) * profile;
-            const rawH = depthOffset + baseH + detail;
+            // Jaggedness on underside
+            const jagged = (t < 0.5) ? (noise * 2.0 * scale) : 0.0;
             
-            // Edge Fade (Mask)
-            let edgeFade = 0.0;
-            if (t > 0.15) {
-                edgeFade = 1.0;
-            } else {
-                edgeFade = t / 0.15; // Linear approx of smoothstep for speed
-                edgeFade = edgeFade * edgeFade * (3 - 2 * edgeFade);
-            }
-
-            // Note: Physics ignores grass spikes (snake slithers *through* grass)
-            const finalH = rawH * edgeFade;
+            const finalH = depthOffset + topH + underH + detail + jagged;
             
             if (h === -1000.0) {
                 h = finalH;

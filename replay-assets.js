@@ -11,7 +11,7 @@ const islandVertexShaderChunk = `
     }
 
     float getNoise(vec3 p, float seed) {
-        float s = 8.0; 
+        float s = 6.0; 
         return sin(p.x * s + seed) * cos(p.y * s + seed) * sin(p.z * s);
     }
 
@@ -20,7 +20,7 @@ const islandVertexShaderChunk = `
         bool hasIsland = false;
         
         vec3 pNorm = normalize(pos);
-        float BASE_RADIUS = 0.8; 
+        float BASE_RADIUS = 1.3; 
         
         for(int i=0; i<16; i++) {
             if(length(uIslands[i].xyz) < 0.1) continue;
@@ -30,15 +30,12 @@ const islandVertexShaderChunk = `
             float growth = uIslands[i].w;
             
             // Animation
-            // Start very small (miniature) and grow to full size
             float scale = 0.05 + 0.95 * smoothstep(0.0, 1.0, growth);
+            float depthOffset = -uBaseRadius * 0.9 * (1.0 - growth);
             
-            // Start deep in core (offset) and float up
-            float depthOffset = -uBaseRadius * 0.8 * (1.0 - growth);
-            
-            // Noise for irregular coastline
-            float noise = getNoise(pNorm, seed * 12.0);
-            float radiusVar = 1.0 + noise * 0.25;
+            // Irregular Coastline
+            float noise = getNoise(pNorm, seed * 15.0);
+            float radiusVar = 1.0 + noise * 0.4;
             float currentRadius = BASE_RADIUS * scale * radiusVar;
 
             float dotProd = dot(pNorm, center);
@@ -47,40 +44,18 @@ const islandVertexShaderChunk = `
             if(angle < currentRadius) {
                 hasIsland = true;
                 
-                float d = angle / currentRadius; // 0..1
-                float t = 1.0 - d; // 1..0 (1 is center)
+                float d = angle / currentRadius; // 0 (center) to 1 (edge)
+                float t = 1.0 - d;             // 1 (center) to 0 (edge)
                 
-                // Shape Profile: Iceberg / Floating Island
-                // We want a deep bottom and a flat top
-                float topH = 4.0 * scale; 
-                float botH = -6.0 * scale; // Deep underside
-
-                // Profile curve:
-                // t=0 (edge) -> 0
-                // t=1 (center) -> 1
-                // Convex shape for bulk
-                float profile = pow(t, 0.5); 
+                // Profile
+                float topH = 1.5 * scale * smoothstep(0.45, 0.65, t);
+                float underH = -6.0 * scale * (1.0 - smoothstep(0.0, 0.45, t));
                 
-                // Base shape mix
-                float baseH = mix(botH, topH, profile);
+                // Detail
+                float detail = getNoise(pNorm * 12.0, seed + 5.0) * 0.3 * scale;
+                float jagged = (t < 0.5) ? (noise * 2.0 * scale) : 0.0;
                 
-                // Detail (Rock/Terrain noise)
-                float detail = getNoise(pNorm * 6.0, seed + 1.0) * 0.8 * scale * t;
-                
-                // "Actual Grass" Displacement
-                // High frequency noise to create blade-like spikes on top
-                float grassZone = smoothstep(0.0, 0.2, baseH + detail + depthOffset);
-                float bladeNoise = hash(pNorm * 150.0); // Very high freq
-                float grassSpikes = grassZone * bladeNoise * 0.6; // 0.6 unit tall grass
-
-                // Combined unmasked height
-                float rawH = depthOffset + baseH + detail;
-                
-                // Edge Masking to prevent "Hole" look
-                // Forces the island geometry to meet the water level at the boundary
-                float edgeFade = smoothstep(0.0, 0.15, t);
-                
-                float finalH = rawH * edgeFade + grassSpikes;
+                float finalH = depthOffset + topH + underH + detail + jagged;
                 
                 if (h == -1000.0) {
                     h = finalH;
@@ -252,47 +227,32 @@ export const createTerrainLayer = (radius, rippleUniformsRef) => {
             
             if (vHeight < -500.0) discard;
 
-            vec3 cGrass = vec3(0.1, 0.5, 0.05);
-            vec3 cGrassTips = vec3(0.4, 0.7, 0.2);
+            vec3 cGrass = vec3(0.3, 0.7, 0.2); 
             vec3 cSand = vec3(0.95, 0.85, 0.6); 
-            vec3 cRock = vec3(0.3, 0.25, 0.22);
-            vec3 cUnderbelly = vec3(0.12, 0.08, 0.06); 
-            vec3 cMagma = vec3(1.0, 0.3, 0.1);
+            vec3 cRock = vec3(0.4, 0.35, 0.3); 
+            vec3 cDeepDirt = vec3(0.15, 0.12, 0.1); 
+            vec3 cMagma = vec3(1.0, 0.3, 0.0);
 
             vec3 finalColor = vec3(0.0);
             
-            // Noise for transitions
-            float noise = sin(vWorldPos.x * 5.0) * sin(vWorldPos.y * 5.0) * sin(vWorldPos.z * 5.0);
-            float beachNoise = noise * 0.3;
-            float grassNoise = fract(sin(dot(vWorldPos, vec3(12.9898, 78.233, 54.53))) * 43758.5453);
-
-            // Visual logic based on height
-            if (vHeight > 0.8 + beachNoise) {
-                // Grass Region
-                finalColor = mix(cGrass, cGrassTips, grassNoise * 0.5);
-                // Fake Shadow for blades
-                if (grassNoise < 0.3) finalColor *= 0.8;
-            } else if (vHeight > -0.2 + beachNoise) {
-                // Beach line (Wider)
+            if (vHeight > 0.8) {
+                finalColor = cGrass;
+            } else if (vHeight > 0.1) {
                 finalColor = cSand;
-                // Wet sand near water
-                if (vHeight < 0.1) finalColor *= 0.85;
             } else {
-                // Underside
                 float depth = -vHeight;
-                finalColor = mix(cRock, cUnderbelly, smoothstep(0.0, 4.0, depth));
+                finalColor = mix(cRock, cDeepDirt, smoothstep(0.0, 4.0, depth));
                 
-                // Deep Magma Tip
                 if (depth > 5.0) {
-                   float heat = smoothstep(5.0, 8.0, depth);
-                   finalColor = mix(finalColor, cMagma, heat * 0.8);
+                    float heat = smoothstep(5.0, 8.0, depth);
+                    finalColor = mix(finalColor, cMagma, heat * 0.6);
                 }
             }
 
-            // Simple fake lighting for underside to prevent "concave" look flat shading
-            // We darken the color based on how deep it is to simulate occlusion
+            // Fake occlusion for underside
             if (vHeight < 0.0) {
-                finalColor *= 0.6; 
+                float depthFactor = clamp((-vHeight) / 5.0, 0.0, 0.6);
+                finalColor *= (1.0 - depthFactor); 
             }
             
             gl_FragColor.rgb = finalColor;
