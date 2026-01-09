@@ -105,10 +105,11 @@ export function getIslandHeight(pos, islands, earthRadius) {
 
         const growth = isle.progress;
         
-        // Add shape distortion (double layer for dynamic shape)
-        const d1 = getNoise(pNorm, seed * 15.0);
-        const d2 = getNoise(pNorm, seed * 30.0 + 4.0);
-        const distortion = (d1 * 0.25 + d2 * 0.15);
+        // Add shape distortion (triple layer for dynamic jagged shape)
+        const d1 = getNoise(pNorm, seed * 20.0);
+        const d2 = getNoise(pNorm, seed * 40.0 + 15.0);
+        const d3 = getNoise(pNorm, seed * 80.0 - 5.0);
+        const distortion = (d1 * 0.35 + d2 * 0.2 + d3 * 0.1);
         
         // Miniature -> Big Logic
         const sizeFactor = 0.05 + 0.95 * Math.pow(growth, 0.7); 
@@ -125,7 +126,10 @@ export function getIslandHeight(pos, islands, earthRadius) {
             // Shape: t goes 1 -> 0
             const t = 1.0 - d;
             const smoothShape = t * t * (3.0 - 2.0 * t); // Smoothstep
-            const finalShape = Math.pow(smoothShape, 0.8); // Less flattened top, smoother
+            
+            // Height Noise
+            const heightNoise = (d1 * 0.1 + d2 * 0.05);
+            const finalShape = Math.pow(smoothShape, 0.7) + heightNoise * smoothShape;
             
             // Rise from Core Logic
             const rise = growth * growth; 
