@@ -51,15 +51,21 @@ const islandVertexShaderChunk = `
                 // More complex shape profile to avoid "straight line" look
                 float t = 1.0 - d;
                 float smoothShape = t * t * (3.0 - 2.0 * t);
+                
                 // Mix in some noise to the height profile itself
                 float heightNoise = (d1 * 0.1 + d2 * 0.05);
-                float finalShape = pow(smoothShape, 0.7) + heightNoise * smoothShape;
+                
+                // Shape profile allowing for negative underside
+                float minH = -1.5 * sizeFactor;
+                float maxH = 1.2 * sizeFactor * hScale;
+                
+                float baseShapeH = minH + (maxH - minH) * pow(smoothShape, 0.7);
+                float finalH = baseShapeH + heightNoise * smoothShape;
                 
                 float rise = growth * growth; 
-                float depth = -uBaseRadius * 0.9 * (1.0 - rise);
-                float shapeH = finalShape * BASE_MAX_H * hScale * sizeFactor;
+                float depth = -uBaseRadius * 0.8 * (1.0 - rise);
 
-                float islandH = depth + shapeH;
+                float islandH = depth + finalH;
                 
                 if (h == -1000.0) {
                     h = islandH;
@@ -237,38 +243,35 @@ export const createTerrainLayer = (radius, rippleUniformsRef) => {
             vec3 finalColor = vec3(0.0);
             
             // Underside (deep rising phase) vs Surface
-            // We use -0.2 as a threshold: anything deeper is "underside/roots"
-            // Anything above is surface (Sand/Dirt/Grass)
+            // We use 0.05 as a threshold: anything deeper is "underside/roots"
+            // This prevents sand (yellow) from bleeding onto the steep underwater walls
             
-            if (vHeight > -0.2) {
+            if (vHeight > 0.05) {
                 float h = vHeight;
                 // Transition from Sand to Dirt to Grass
-                // h can be slightly negative (beach underwater) up to positive
                 
                 if (h < 0.3) {
                     finalColor = cSand;
-                    // Add some wet sand darkening near water line
-                    if (h < 0.05) finalColor *= 0.9;
-                } else if (h < 0.6) {
                     finalColor = mix(cSand, cDirt, smoothstep(0.3, 0.6, h));
                 } else {
                     finalColor = mix(cDirt, cGrass, smoothstep(0.6, 0.9, h));
                 }
             } else {
                 // Rising phase / Underside
-                // Map depth to colors
-                float depth = -vHeight; // Positive depth value
-                // Transition from dark rock/magma at bottom to sandy/rocky near surface
+                float depth = -vHeight; 
                 
-                // Closer to surface (-0.2 down to -2.0) -> Dark Rock
-                // Deep (-2.0 down) -> Magma
+                // Use darker, rockier tones for the immediate underside
+                vec3 cDarkEarth = vec3(0.25, 0.2, 0.15);
                 
-                vec3 cUnderside = mix(cDeepRock, cMagma, smoothstep(2.0, 8.0, depth));
+                // Transition from dark rock near surface to magma deep down
+                vec3 cUnderside = mix(cDarkEarth, cDeepRock, smoothstep(0.0, 3.0, depth));
+                cUnderside = mix(cUnderside, cMagma, smoothstep(5.0, 15.0, depth));
+
                 finalColor = cUnderside;
                 
-                // Add a glow/heat effect if very deep
-                if (depth > 5.0) {
-                    finalColor += vec3(0.2, 0.05, 0.0) * (depth - 5.0);
+                // Add a glow/heat effect if very deep (core formation)
+                if (depth > 10.0) {
+                    finalColor += vec3(0.2, 0.05, 0.0) * (depth - 10.0);
                 }
             }
             
