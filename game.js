@@ -23,6 +23,9 @@ export class Game {
         this.growthPoints = 0;
         this.islandPoints = 0;
         this.time = 0;
+        
+        // Interaction
+        this.interactionMesh = null; // Larger invisible sphere for raycasting
 
         // World Generation
         this.islands = []; // { center: Vector3, progress: float }

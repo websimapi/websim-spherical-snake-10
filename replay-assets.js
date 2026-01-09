@@ -11,16 +11,22 @@ const islandVertexShaderChunk = `
     }
 
     float getNoise(vec3 p, float seed) {
-        float s = 6.0; 
-        return sin(p.x * s + seed) * cos(p.y * s + seed) * sin(p.z * s);
+        float s = 4.0; 
+        float n = sin(p.x * s + seed) * cos(p.y * s + seed) * sin(p.z * s);
+        n += 0.5 * (sin(p.x * s * 2.0 + seed) * cos(p.y * s * 2.0 + seed) * sin(p.z * s * 2.0));
+        return n * 0.66;
+    }
+
+    float smax(float a, float b, float k) {
+        float h = max(k - abs(a - b), 0.0) / k;
+        return max(a, b) + h * h * k * 0.25;
     }
 
     float getIslandH(vec3 pos) {
         float h = -1000.0;
-        bool hasIsland = false;
         
         vec3 pNorm = normalize(pos);
-        float BASE_RADIUS = 1.3; 
+        float BASE_RADIUS = 0.65; // Matches JS logic
         
         for(int i=0; i<16; i++) {
             if(length(uIslands[i].xyz) < 0.1) continue;
@@ -34,37 +40,37 @@ const islandVertexShaderChunk = `
             float depthOffset = -uBaseRadius * 0.9 * (1.0 - growth);
             
             // Irregular Coastline
-            float noise = getNoise(pNorm, seed * 15.0);
-            float radiusVar = 1.0 + noise * 0.4;
+            float noise = getNoise(pNorm, seed * 10.0);
+            float radiusVar = 1.0 + noise * 0.3;
             float currentRadius = BASE_RADIUS * scale * radiusVar;
 
             float dotProd = dot(pNorm, center);
             float angle = acos(clamp(dotProd, -1.0, 1.0));
             
-            if(angle < currentRadius) {
-                hasIsland = true;
-                
-                float d = angle / currentRadius; // 0 (center) to 1 (edge)
-                float t = 1.0 - d;             // 1 (center) to 0 (edge)
+            if(angle < currentRadius * 1.5) {
+                float d = angle / currentRadius; 
+                float t = max(0.0, 1.0 - d);
                 
                 // Profile
-                float topH = 1.5 * scale * smoothstep(0.45, 0.65, t);
-                float underH = -6.0 * scale * (1.0 - smoothstep(0.0, 0.45, t));
+                float topH = 1.2 * scale * smoothstep(0.3, 0.6, t);
+                float underH = -5.0 * scale * (1.0 - smoothstep(0.0, 0.4, t));
                 
                 // Detail
-                float detail = getNoise(pNorm * 12.0, seed + 5.0) * 0.3 * scale;
-                float jagged = (t < 0.5) ? (noise * 2.0 * scale) : 0.0;
+                float detail = getNoise(pNorm * 15.0, seed + 5.0) * 0.2 * scale * t;
                 
-                float finalH = depthOffset + topH + underH + detail + jagged;
+                float finalH = depthOffset + topH + underH + detail;
                 
+                // Edge fade
+                finalH -= (1.0 - smoothstep(0.0, 0.1, t)) * 10.0;
+
                 if (h == -1000.0) {
                     h = finalH;
                 } else {
-                    h = max(h, finalH);
+                    h = smax(h, finalH, 0.5);
                 }
             }
         }
-        return hasIsland ? h : -1000.0;
+        return h;
     }
 `;
 

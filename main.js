@@ -65,7 +65,13 @@ function getIntersection(x, y) {
     mouse.x = (x / window.innerWidth) * 2 - 1;
     mouse.y = -(y / window.innerHeight) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
-    return raycaster.intersectObject(game.earth);
+    
+    // Prefer interaction mesh if available (larger target for mountains)
+    // fallback to earth
+    const target = game.interactionMesh || game.earth;
+    if (!target) return [];
+    
+    return raycaster.intersectObject(target);
 }
 
 function handleInput(x, y) {

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getTangentDirection } from './math-utils.js';
+import { getTangentDirection, getTerrainNormal } from './math-utils.js';
 
 export class Snake {
     constructor(scene, earthRadius) {

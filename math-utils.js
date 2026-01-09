@@ -70,12 +70,20 @@ export function getRippleHeight(pos, time, centers, startTimes, intensities, ear
     return totalRipple;
 }
 
+// Smooth Maximum (Polynomial)
+function smax(a, b, k) {
+    const h = Math.max(k - Math.abs(a - b), 0.0) / k;
+    return Math.max(a, b) + h * h * k * 0.25;
+}
+
 export function getIslandHeight(pos, islands, earthRadius) {
     let h = -1000.0; 
-    let hasIsland = false;
-
+    
+    // Reduced base radius to keep islands smaller relative to sphere
+    // Allows for more water and distinct islands
+    const BASE_RADIUS = 0.65; 
+    
     const pNorm = pos.clone().normalize();
-    const BASE_RADIUS = 1.3; // Broader base for better beaches
 
     const hash = (v) => {
         const dot = v.x * 12.9898 + v.y * 78.233 + v.z * 54.53;
@@ -83,9 +91,12 @@ export function getIslandHeight(pos, islands, earthRadius) {
         return sinVal - Math.floor(sinVal);
     };
 
+    // Improved noise with multiple frequencies for detail
     const getNoise = (p, seed) => {
-        const s = 6.0;
-        return Math.sin(p.x * s + seed) * Math.cos(p.y * s + seed) * Math.sin(p.z * s);
+        const s = 4.0;
+        let n = Math.sin(p.x * s + seed) * Math.cos(p.y * s + seed) * Math.sin(p.z * s);
+        n += 0.5 * (Math.sin(p.x * s * 2.0 + seed) * Math.cos(p.y * s * 2.0 + seed) * Math.sin(p.z * s * 2.0));
+        return n * 0.66; // Normalize roughly
     };
 
     const smoothstep = (min, max, value) => {
@@ -96,7 +107,6 @@ export function getIslandHeight(pos, islands, earthRadius) {
     for(let i=0; i<islands.length; i++) {
         const isle = islands[i];
         const center = isle.center;
-        
         const seed = hash(center);
         const growth = isle.progress;
         
@@ -105,44 +115,75 @@ export function getIslandHeight(pos, islands, earthRadius) {
         const depthOffset = -earthRadius * 0.9 * (1.0 - growth);
         
         // Irregular Coastline
-        const noise = getNoise(pNorm, seed * 15.0);
-        const radiusVar = 1.0 + noise * 0.4;
+        const noise = getNoise(pNorm, seed * 10.0);
+        const radiusVar = 1.0 + noise * 0.3;
         const currentRadius = BASE_RADIUS * scale * radiusVar;
 
         const dotProd = pNorm.dot(center);
         const angle = Math.acos(Math.max(-1.0, Math.min(1.0, dotProd)));
         
-        if (angle < currentRadius) {
-            hasIsland = true;
-            
+        // Calculate raw height for this island
+        // We calculate for a slightly wider range to allow soft blending at edges
+        if (angle < currentRadius * 1.5) {
             const d = angle / currentRadius; // 0 (center) to 1 (edge)
-            const t = 1.0 - d;             // 1 (center) to 0 (edge)
+            const t = Math.max(0, 1.0 - d); // 1 (center) to 0 (edge)
             
-            // Profile: Plains Top + Jagged Deep Underside
-            
+            // Profile: Smoother transition
             // Top: Flat plateau (Plains)
-            // Rises from water level at t=0.45
-            const topH = 1.5 * scale * smoothstep(0.45, 0.65, t);
+            const topH = 1.2 * scale * smoothstep(0.3, 0.6, t);
             
             // Bottom: Deep cone (Underside)
-            // Drops deep from water level at t=0.45
-            const underH = -6.0 * scale * (1.0 - smoothstep(0.0, 0.45, t));
+            const underH = -5.0 * scale * (1.0 - smoothstep(0.0, 0.4, t));
             
             // Detail
-            const detail = getNoise(pNorm.clone().multiplyScalar(12.0), seed + 5.0) * 0.3 * scale;
+            const detail = getNoise(pNorm.clone().multiplyScalar(15.0), seed + 5.0) * 0.2 * scale * t;
             
-            // Jaggedness on underside
-            const jagged = (t < 0.5) ? (noise * 2.0 * scale) : 0.0;
-            
-            const finalH = depthOffset + topH + underH + detail + jagged;
-            
+            let finalH = depthOffset + topH + underH + detail;
+
+            // Fade out completely at boundaries to prevent hard cuts before blending
+            finalH -= (1.0 - smoothstep(0.0, 0.1, t)) * 10.0; 
+
             if (h === -1000.0) {
                 h = finalH;
             } else {
-                h = Math.max(h, finalH);
+                // Smooth blend
+                h = smax(h, finalH, 0.5);
             }
         }
     }
     
-    return hasIsland ? h : -1000.0;
+    return h;
+}
+
+export function getTerrainNormal(pos, earthRadius, terrainFn) {
+    const epsilon = 0.05;
+    const h0 = terrainFn(pos);
+    
+    // Create tangent vectors
+    const n = pos.clone().normalize();
+    // Arbitrary tangent
+    let t1 = new THREE.Vector3(0, 1, 0).cross(n);
+    if (t1.lengthSq() < 0.001) t1 = new THREE.Vector3(1, 0, 0).cross(n);
+    t1.normalize();
+    const t2 = new THREE.Vector3().crossVectors(n, t1);
+    
+    // Sample nearby points
+    const p1 = pos.clone().add(t1.clone().multiplyScalar(epsilon));
+    const p2 = pos.clone().add(t2.clone().multiplyScalar(epsilon));
+    
+    const h1 = terrainFn(p1);
+    const h2 = terrainFn(p2);
+    
+    // Compute positions on the terrain surface
+    // h0 is height offset from radius
+    const v0 = pos.clone().normalize().multiplyScalar(earthRadius + h0);
+    const v1 = p1.normalize().multiplyScalar(earthRadius + h1);
+    const v2 = p2.normalize().multiplyScalar(earthRadius + h2);
+    
+    // Compute normal from triangle
+    const edge1 = new THREE.Vector3().subVectors(v1, v0);
+    const edge2 = new THREE.Vector3().subVectors(v2, v0);
+    
+    const normal = new THREE.Vector3().crossVectors(edge1, edge2).normalize();
+    return normal;
 }
