@@ -124,14 +124,17 @@ export function getIslandHeight(pos, islands, earthRadius) {
             
             // Physics Profile: Matches Top Layer Visuals
             // Flat plateau that tapers off
-            const topH = 1.2 * scale * smoothstep(0.2, 0.6, t);
+            let topH = 1.2 * scale * smoothstep(0.05, 0.6, t);
+            // Dip at edge
+            topH -= 0.05 * scale * (1.0 - smoothstep(0.0, 0.1, t));
             
-            const detail = getNoise(pNorm.clone().multiplyScalar(15.0), seed + 5.0) * 0.2 * scale * t;
+            const edgeFactor = smoothstep(0.0, 0.15, t);
+            const detail = getNoise(pNorm.clone().multiplyScalar(15.0), seed + 5.0) * 0.2 * scale * t * edgeFactor;
             
             let finalH = depthOffset + topH + detail;
 
-            // Fade edge
-            finalH -= (1.0 - smoothstep(0.0, 0.1, t)) * 10.0; 
+            // Gentle Fade edge
+            finalH -= (1.0 - smoothstep(0.0, 0.02, t)) * 2.0;
 
             if (h === -1000.0) {
                 h = finalH;

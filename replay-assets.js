@@ -58,31 +58,33 @@ const islandVertexShaderChunk = `
                 float d = angle / currentRadius; 
                 float t = max(0.0, 1.0 - d);
                 
-                float detail = getNoise(pNorm * 15.0, seed + 5.0) * 0.2 * scale * t;
+                // Fade detail at edges for smooth coastline
+                float edgeFactor = smoothstep(0.0, 0.15, t);
+                float detail = getNoise(pNorm * 15.0, seed + 5.0) * 0.2 * scale * t * edgeFactor;
                 float finalH = 0.0;
 
                 if (uLayerType == 0) {
                     // TOP LAYER: Plateau / Plains
-                    float topH = 1.2 * scale * smoothstep(0.2, 0.6, t);
-                    finalH = depthOffset + topH + detail;
-                    // Edge fade to hide seams
-                    finalH -= (1.0 - smoothstep(0.0, 0.1, t)) * 10.0;
+                    // Start rising from 0.05, allowing a flat/negative area for beach
+                    float topH = 1.2 * scale * smoothstep(0.05, 0.6, t);
                     
+                    // Slight dip at the very edge to submerge
+                    topH -= 0.05 * scale * (1.0 - smoothstep(0.0, 0.1, t));
+
+                    finalH = depthOffset + topH + detail;
+                    
+                    // Gentle edge containment instead of harsh cliff
+                    finalH -= (1.0 - smoothstep(0.0, 0.02, t)) * 2.0;
+
                     if (h == -1000.0) h = finalH;
                     else h = smax(h, finalH, 0.5);
                 } else {
                     // BOTTOM LAYER: Jagged underside cone
-                    // Must meet the top layer at t=0.2 (Radius boundary)
-                    float cone = 0.0;
-                    if (t >= 0.2) {
-                        // Deepest at center (t=1.0)
-                        cone = -7.0 * scale * smoothstep(0.2, 1.0, t);
-                        // Add some jaggedness
-                        cone += detail * 2.0; 
-                    }
+                    // Extend to full radius (t=0) to support the beach from below
+                    float cone = -7.0 * scale * smoothstep(0.0, 0.9, t);
+                    cone += detail * 2.0; 
                     finalH = depthOffset + cone;
                     
-                    // We want the DEEPEST value for the underside shell
                     if (h == 0.0) h = finalH;
                     else h = smin(h, finalH, 0.5);
                 }
@@ -217,6 +219,7 @@ export const createTerrainLayer = (radius, rippleUniformsRef, type = 'top') => {
         shader.uniforms.uIslands = uniforms.uIslands;
         shader.uniforms.uBaseRadius = uniforms.uBaseRadius;
         shader.uniforms.uLayerType = { value: layerTypeInt };
+        shader.uniforms.uTime = uniforms.uTime;
 
         shader.vertexShader = islandVertexShaderChunk + shader.vertexShader;
         
@@ -234,9 +237,9 @@ export const createTerrainLayer = (radius, rippleUniformsRef, type = 'top') => {
             
             float h = 0.0;
             if (uLayerType == 0) {
-                // Top layer: discard if too low
+                // Top layer
                 if (islandH < -500.0) h = 0.0;
-                else h = max(0.0, islandH); // Clamp negative part to 0 for Top
+                else h = max(-2.0, islandH); // Allow to go underwater slightly for shore effect
             } else {
                 // Bottom layer
                 h = islandH; // Should be negative or 0
@@ -269,13 +272,25 @@ export const createTerrainLayer = (radius, rippleUniformsRef, type = 'top') => {
             
             if (uLayerType == 0) {
                 // Top Layer
-                if (vHeight < -500.0) discard;
+                if (vHeight < -5.0) discard; // increased dropoff range
                 
                 // Color ramp
                 if (vHeight > 0.6) {
                     finalColor = cGrass;
                 } else {
                     finalColor = cSand;
+                    
+                    // Foam / Shore effect
+                    if (vHeight < 0.2) {
+                        float wave = sin(vWorldPos.x * 2.0 + vWorldPos.z * 3.0 + uTime * 3.0) * 0.5 + 0.5;
+                        float foamThreshold = 0.05 + wave * 0.05;
+                        
+                        if (vHeight < foamThreshold && vHeight > foamThreshold - 0.05) {
+                            finalColor = mix(finalColor, vec3(1.0, 1.0, 1.0), 0.6); // Foam line
+                        } else if (vHeight < 0.0) {
+                            finalColor *= 0.7; // Wet underwater sand
+                        }
+                    }
                 }
             } else {
                 // Bottom Layer
