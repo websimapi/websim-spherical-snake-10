@@ -131,16 +131,16 @@ export function getIslandHeight(pos, islands, earthRadius) {
             const heightNoise = (d1 * 0.1 + d2 * 0.05);
             
             // Core shape: center is high, edge is low (underside)
-            // We want the edge (t=0) to be deep (-1.5) and center (t=1) to be high (+1.0)
-            const minH = -1.5 * sizeFactor;
+            // Deep underside for floating island look
+            const minH = -4.0 * sizeFactor;
             const maxH = 1.2 * sizeFactor * hScale;
             
-            const baseShapeH = minH + (maxH - minH) * Math.pow(smoothShape, 0.7);
+            const baseShapeH = minH + (maxH - minH) * Math.pow(smoothShape, 0.5);
             const finalH = baseShapeH + heightNoise * smoothShape;
             
             // Rise from Core Logic
             const rise = growth * growth; 
-            const depth = -earthRadius * 0.8 * (1.0 - rise);
+            const depth = -earthRadius * 0.95 * (1.0 - rise);
 
             const islandH = depth + finalH;
             
