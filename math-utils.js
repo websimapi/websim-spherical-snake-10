@@ -108,8 +108,9 @@ export function getIslandHeight(pos, islands, earthRadius) {
         const seed = hash(center);
         const growth = isle.progress;
         
-        const scale = 0.05 + 0.95 * smoothstep(0.0, 1.0, growth);
-        const depthOffset = -earthRadius * 0.9 * (1.0 - growth);
+        // Match shader logic: Start larger and closer
+        const scale = 0.2 + 0.8 * smoothstep(0.0, 1.0, growth);
+        const depthOffset = -earthRadius * 0.5 * (1.0 - growth);
         
         const noise = getNoise(pNorm, seed * 10.0);
         const radiusVar = 1.0 + noise * 0.3;

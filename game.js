@@ -111,6 +111,7 @@ export class Game {
 
         this.audioManager.load('eat', './snake_eat.mp3');
         this.audioManager.load('die', './game_over.mp3');
+        this.audioManager.load('spawn', './island_spawn.mp3');
 
         // Create World (Earth + Terrain + Atmosphere)
         this.createWorld();
@@ -262,8 +263,8 @@ export class Game {
             const island = this.islands[i];
             if (island.progress < 1.0) {
                 isGrowingAnyIsland = true;
-                // Float up speed
-                island.progress += dt * 0.15; 
+                // Float up speed (Faster)
+                island.progress += dt * 0.4; 
                 if (island.progress > 1.0) island.progress = 1.0;
                 
                 // Update Uniform
@@ -365,15 +366,19 @@ export class Game {
             this.growthPoints -= 10;
         }
 
-        // Check Island Formation (Every 50 points)
-        if (this.islandPoints >= 50) {
-            this.islandPoints -= 50;
+        // Check Island Formation (Every 20 points)
+        if (this.islandPoints >= 20) {
+            this.islandPoints -= 20;
             if (this.islands.length < this.MAX_ISLANDS) {
                 const center = getRandomPointOnSphere(1.0).normalize();
                 this.islands.push({ center, progress: 0.0 });
                 
                 const i = this.islands.length - 1;
                 this.rippleUniforms.uIslands.value[i].set(center.x, center.y, center.z, 0.0);
+                
+                // Audio and Visual Feedback
+                this.playSound('spawn');
+                this.triggerRipple(center.clone().multiplyScalar(this.EARTH_RADIUS), 2000);
             }
         }
 

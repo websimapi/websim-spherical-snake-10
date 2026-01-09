@@ -44,8 +44,9 @@ const islandVertexShaderChunk = `
             float seed = hash(center);
             float growth = uIslands[i].w;
             
-            float scale = 0.05 + 0.95 * smoothstep(0.0, 1.0, growth);
-            float depthOffset = -uBaseRadius * 0.9 * (1.0 - growth);
+            // Start larger and closer to surface for better visibility
+            float scale = 0.2 + 0.8 * smoothstep(0.0, 1.0, growth);
+            float depthOffset = -uBaseRadius * 0.5 * (1.0 - growth);
             
             float noise = getNoise(pNorm, seed * 10.0);
             float radiusVar = 1.0 + noise * 0.3;
@@ -272,7 +273,7 @@ export const createTerrainLayer = (radius, rippleUniformsRef, type = 'top') => {
             
             if (uLayerType == 0) {
                 // Top Layer
-                if (vHeight < -5.0) discard; // increased dropoff range
+                if (vHeight < -8.0) discard; // increased dropoff range to see deep rising islands
                 
                 // Color ramp
                 if (vHeight > 0.6) {
