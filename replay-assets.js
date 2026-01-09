@@ -34,8 +34,7 @@ const islandVertexShaderChunk = `
             float scale = 0.05 + 0.95 * smoothstep(0.0, 1.0, growth);
             
             // Start deep in core (offset) and float up
-            // At growth 0, we want it deep.
-            float depthOffset = -uBaseRadius * 0.9 * (1.0 - growth);
+            float depthOffset = -uBaseRadius * 0.8 * (1.0 - growth);
             
             // Noise for irregular coastline
             float noise = getNoise(pNorm, seed * 12.0);
@@ -51,24 +50,37 @@ const islandVertexShaderChunk = `
                 float d = angle / currentRadius; // 0..1
                 float t = 1.0 - d; // 1..0 (1 is center)
                 
-                // Shape Profile: Bulky floating island (Plateau top, steep sides)
-                // t goes 0 (edge) -> 1 (center)
-                float profile = smoothstep(0.0, 1.0, t);
-                profile = pow(profile, 0.4); // Push curve out to make it bulkier/convex
+                // Shape Profile: Iceberg / Floating Island
+                // We want a deep bottom and a flat top
+                float topH = 4.0 * scale; 
+                float botH = -6.0 * scale; // Deep underside
 
-                // Heights
-                float topH = 3.5 * scale; 
-                float botH = -2.5 * scale; // Less deep, more like a chunk
+                // Profile curve:
+                // t=0 (edge) -> 0
+                // t=1 (center) -> 1
+                // Convex shape for bulk
+                float profile = pow(t, 0.5); 
                 
-                // Detail
-                float detail = getNoise(pNorm * 4.0, seed + 1.0) * 0.5 * scale * t;
-                
+                // Base shape mix
                 float baseH = mix(botH, topH, profile);
                 
-                // Start very small and deep
-                // When growth is 0: scale is tiny, depth is deep
-                // depthOffset needs to put it inside the core
-                float finalH = depthOffset + baseH + detail;
+                // Detail (Rock/Terrain noise)
+                float detail = getNoise(pNorm * 6.0, seed + 1.0) * 0.8 * scale * t;
+                
+                // "Actual Grass" Displacement
+                // High frequency noise to create blade-like spikes on top
+                float grassZone = smoothstep(0.0, 0.2, baseH + detail + depthOffset);
+                float bladeNoise = hash(pNorm * 150.0); // Very high freq
+                float grassSpikes = grassZone * bladeNoise * 0.6; // 0.6 unit tall grass
+
+                // Combined unmasked height
+                float rawH = depthOffset + baseH + detail;
+                
+                // Edge Masking to prevent "Hole" look
+                // Forces the island geometry to meet the water level at the boundary
+                float edgeFade = smoothstep(0.0, 0.15, t);
+                
+                float finalH = rawH * edgeFade + grassSpikes;
                 
                 if (h == -1000.0) {
                     h = finalH;
@@ -240,29 +252,40 @@ export const createTerrainLayer = (radius, rippleUniformsRef) => {
             
             if (vHeight < -500.0) discard;
 
-            vec3 cGrass = vec3(0.2, 0.6, 0.1);
-            vec3 cSand = vec3(0.9, 0.8, 0.5); 
+            vec3 cGrass = vec3(0.1, 0.5, 0.05);
+            vec3 cGrassTips = vec3(0.4, 0.7, 0.2);
+            vec3 cSand = vec3(0.95, 0.85, 0.6); 
             vec3 cRock = vec3(0.3, 0.25, 0.22);
-            vec3 cUnderbelly = vec3(0.15, 0.1, 0.08); // Dark Rock
-            vec3 cMagma = vec3(1.0, 0.2, 0.0);
+            vec3 cUnderbelly = vec3(0.12, 0.08, 0.06); 
+            vec3 cMagma = vec3(1.0, 0.3, 0.1);
 
             vec3 finalColor = vec3(0.0);
             
+            // Noise for transitions
+            float noise = sin(vWorldPos.x * 5.0) * sin(vWorldPos.y * 5.0) * sin(vWorldPos.z * 5.0);
+            float beachNoise = noise * 0.3;
+            float grassNoise = fract(sin(dot(vWorldPos, vec3(12.9898, 78.233, 54.53))) * 43758.5453);
+
             // Visual logic based on height
-            if (vHeight > 0.8) {
-                finalColor = cGrass;
-            } else if (vHeight > 0.0) {
-                // Beach line
+            if (vHeight > 0.8 + beachNoise) {
+                // Grass Region
+                finalColor = mix(cGrass, cGrassTips, grassNoise * 0.5);
+                // Fake Shadow for blades
+                if (grassNoise < 0.3) finalColor *= 0.8;
+            } else if (vHeight > -0.2 + beachNoise) {
+                // Beach line (Wider)
                 finalColor = cSand;
+                // Wet sand near water
+                if (vHeight < 0.1) finalColor *= 0.85;
             } else {
                 // Underside
                 float depth = -vHeight;
-                finalColor = mix(cRock, cUnderbelly, smoothstep(0.0, 2.0, depth));
+                finalColor = mix(cRock, cUnderbelly, smoothstep(0.0, 4.0, depth));
                 
-                // Core heat glow (subtle, only very deep)
-                if (depth > 2.0) {
-                   float heat = smoothstep(2.0, 5.0, depth);
-                   finalColor = mix(finalColor, cMagma, heat * 0.5);
+                // Deep Magma Tip
+                if (depth > 5.0) {
+                   float heat = smoothstep(5.0, 8.0, depth);
+                   finalColor = mix(finalColor, cMagma, heat * 0.8);
                 }
             }
 

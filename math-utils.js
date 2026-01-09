@@ -102,9 +102,9 @@ export function getIslandHeight(pos, islands, earthRadius) {
         
         // Match Shader Logic
         const scale = 0.05 + 0.95 * smoothstep(0.0, 1.0, growth);
-        const depthOffset = -earthRadius * 0.9 * (1.0 - growth);
+        const depthOffset = -earthRadius * 0.8 * (1.0 - growth);
         
-        // Noise for irregular coastline
+        // Noise
         const noise = getNoise(pNorm, seed * 12.0);
         const radiusVar = 1.0 + noise * 0.25;
         const currentRadius = BASE_RADIUS * scale * radiusVar;
@@ -118,21 +118,31 @@ export function getIslandHeight(pos, islands, earthRadius) {
             const d = angle / currentRadius;
             const t = 1.0 - d;
             
-            // Shape Profile: Bulky (convex)
-            let profile = smoothstep(0.0, 1.0, t);
-            profile = Math.pow(profile, 0.4);
+            // Shape Profile
+            const topH = 4.0 * scale; 
+            const botH = -6.0 * scale; 
+            
+            const profile = Math.pow(t, 0.5);
 
-            // Heights
-            const topH = 3.5 * scale; 
-            const botH = -2.5 * scale; 
-            
             // Detail
-            const pDetail = pNorm.clone().multiplyScalar(4.0);
-            const detail = getNoise(pDetail, seed + 1.0) * 0.5 * scale * t;
+            const pDetail = pNorm.clone().multiplyScalar(6.0);
+            const detail = getNoise(pDetail, seed + 1.0) * 0.8 * scale * t;
             
-            // Mix
+            // Base Mix
             const baseH = botH + (topH - botH) * profile;
-            const finalH = depthOffset + baseH + detail;
+            const rawH = depthOffset + baseH + detail;
+            
+            // Edge Fade (Mask)
+            let edgeFade = 0.0;
+            if (t > 0.15) {
+                edgeFade = 1.0;
+            } else {
+                edgeFade = t / 0.15; // Linear approx of smoothstep for speed
+                edgeFade = edgeFade * edgeFade * (3 - 2 * edgeFade);
+            }
+
+            // Note: Physics ignores grass spikes (snake slithers *through* grass)
+            const finalH = rawH * edgeFade;
             
             if (h === -1000.0) {
                 h = finalH;
