@@ -11,7 +11,7 @@ const islandVertexShaderChunk = `
     }
 
     float getNoise(vec3 p, float seed) {
-        float s = 6.0;
+        float s = 8.0; 
         return sin(p.x * s + seed) * cos(p.y * s + seed) * sin(p.z * s);
     }
 
@@ -20,7 +20,7 @@ const islandVertexShaderChunk = `
         bool hasIsland = false;
         
         vec3 pNorm = normalize(pos);
-        float BASE_RADIUS = 0.6; // Slightly larger base
+        float BASE_RADIUS = 0.8; 
         
         for(int i=0; i<16; i++) {
             if(length(uIslands[i].xyz) < 0.1) continue;
@@ -29,20 +29,14 @@ const islandVertexShaderChunk = `
             float seed = hash(center);
             float growth = uIslands[i].w;
             
-            // Animation: Start tiny and deep, grow and rise
-            // Linear growth for better control
-            float scale = 0.1 + 0.9 * growth; 
-            
-            // Start deep in core (-60% radius) and rise to surface (0 offset)
+            // Animation
+            float scale = 0.1 + 0.9 * smoothstep(0.0, 1.0, growth);
             float depthOffset = -uBaseRadius * 0.6 * (1.0 - growth);
             
-            // Noise for shape
-            float d1 = getNoise(pNorm, seed * 20.0);
-            float d2 = getNoise(pNorm, seed * 45.0 + 15.0);
-            float distortion = (d1 * 0.3 + d2 * 0.15);
-            
-            float rScale = 0.8 + 0.4 * seed;
-            float currentRadius = BASE_RADIUS * rScale * scale * (1.0 + distortion * 0.5);
+            // Noise for irregular coastline
+            float noise = getNoise(pNorm, seed * 12.0);
+            float radiusVar = 1.0 + noise * 0.25;
+            float currentRadius = BASE_RADIUS * scale * radiusVar;
 
             float dotProd = dot(pNorm, center);
             float angle = acos(clamp(dotProd, -1.0, 1.0));
@@ -50,27 +44,22 @@ const islandVertexShaderChunk = `
             if(angle < currentRadius) {
                 hasIsland = true;
                 
-                // Distance from center (0..1)
-                float d = angle / currentRadius;
+                float d = angle / currentRadius; // 0..1
+                float t = 1.0 - d; // 1..0 (1 is center)
                 
-                // Cliff-like profile: stays high longer, drops fast at edge
-                // t goes 1.0 (center) -> 0.0 (edge)
-                float t = 1.0 - d;
+                // Shape Profile: mix of cone and rounded top
+                float profile = smoothstep(0.0, 1.0, t);
+                profile = pow(profile, 0.7); // Rounded top, tapering sides
+
+                // Heights
+                float topH = 2.2 * scale; 
+                float botH = -4.0 * scale; // Deep floating root
                 
-                // Sharper shoulder for cliff look
-                float shapeProfile = smoothstep(0.0, 0.3, t); 
+                // Detail
+                float detail = getNoise(pNorm * 3.0, seed + 1.0) * 0.4 * scale * t;
                 
-                // Base height structure
-                // High center, deep edges
-                float topH = 1.5 * scale * (0.8 + 0.4 * fract(seed * 12.34));
-                float bottomH = -3.0 * scale; // Deep "roots"
-                
-                float baseH = mix(bottomH, topH, shapeProfile);
-                
-                // Add surface detail noise
-                float surfaceNoise = d1 * 0.3 * scale * shapeProfile;
-                
-                float finalH = depthOffset + baseH + surfaceNoise;
+                float baseH = mix(botH, topH, profile);
+                float finalH = depthOffset + baseH + detail;
                 
                 if (h == -1000.0) {
                     h = finalH;
@@ -192,11 +181,12 @@ export const createEarth = (radius, rippleUniformsRef) => {
 };
 
 export const createTerrainLayer = (radius, rippleUniformsRef) => {
-    const geo = new THREE.SphereGeometry(radius, 64, 64);
+    const geo = new THREE.SphereGeometry(radius, 128, 128); // Higher resolution for smoother displacement
     const mat = new THREE.MeshStandardMaterial({
         color: 0xffffff,
         roughness: 0.9,
-        side: THREE.DoubleSide
+        side: THREE.DoubleSide,
+        flatShading: true // Low poly look for better shape definition
     });
 
     mat.onBeforeCompile = (shader) => {
@@ -239,25 +229,32 @@ export const createTerrainLayer = (radius, rippleUniformsRef) => {
             
             if (vHeight < -500.0) discard;
 
-            vec3 cDirt = vec3(0.35, 0.25, 0.15);
-            vec3 cGrass = vec3(0.25, 0.6, 0.15);
-            vec3 cRock = vec3(0.15, 0.12, 0.1);
-            vec3 cDeepRock = vec3(0.08, 0.06, 0.05);
+            vec3 cGrass = vec3(0.2, 0.7, 0.15);
+            vec3 cSand = vec3(0.94, 0.85, 0.6); // Warm Sand
+            vec3 cDirt = vec3(0.4, 0.3, 0.2);
+            vec3 cRock = vec3(0.25, 0.22, 0.2);
+            vec3 cDeep = vec3(0.1, 0.05, 0.02);
+            vec3 cMagma = vec3(1.0, 0.3, 0.0);
 
             vec3 finalColor = vec3(0.0);
             
-            // Simple layering based on height
-            if (vHeight > 0.3) {
-                // Top Grass
+            if (vHeight > 0.5) {
                 finalColor = cGrass;
-            } else if (vHeight > 0.0) {
-                // Beach/Dirt edge
+            } else if (vHeight > 0.15) {
+                finalColor = cSand;
+            } else if (vHeight > -0.5) {
                 finalColor = cDirt;
             } else {
-                // Cliff / Underside
                 float depth = -vHeight;
-                // Gradient from rock to deep dark rock
-                finalColor = mix(cRock, cDeepRock, smoothstep(0.0, 5.0, depth));
+                // Transition to rock then deep underbelly
+                finalColor = mix(cRock, cDeep, smoothstep(0.5, 3.0, depth));
+                
+                // Magma core glow
+                if (depth > 2.0) {
+                    float glow = smoothstep(2.0, 4.5, depth);
+                    finalColor = mix(finalColor, cMagma, glow * 0.6);
+                    finalColor += cMagma * glow * 0.3; // Emissive boost
+                }
             }
             
             gl_FragColor.rgb = finalColor;

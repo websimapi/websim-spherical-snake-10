@@ -71,23 +71,20 @@ export function getRippleHeight(pos, time, centers, startTimes, intensities, ear
 }
 
 export function getIslandHeight(pos, islands, earthRadius) {
-    let h = -1000.0; // Start with a value that indicates 'no island influence'
+    let h = -1000.0; 
     let hasIsland = false;
 
     const pNorm = pos.clone().normalize();
-    const BASE_MAX_H = 1.0; 
-    const BASE_RADIUS = 0.5; 
+    const BASE_RADIUS = 0.8; 
 
-    // Match GLSL hash
     const hash = (v) => {
         const dot = v.x * 12.9898 + v.y * 78.233 + v.z * 54.53;
         const sinVal = Math.sin(dot) * 43758.5453;
         return sinVal - Math.floor(sinVal);
     };
 
-    // Match GLSL Noise (Simple 3D sine mix)
     const getNoise = (p, seed) => {
-        const s = 6.0;
+        const s = 8.0;
         return Math.sin(p.x * s + seed) * Math.cos(p.y * s + seed) * Math.sin(p.z * s);
     };
 
@@ -98,39 +95,45 @@ export function getIslandHeight(pos, islands, earthRadius) {
 
     for(let i=0; i<islands.length; i++) {
         const isle = islands[i];
+        const center = isle.center;
         
-        const seed = hash(isle.center);
+        const seed = hash(center);
         const growth = isle.progress;
         
         // Match Shader Logic
-        const scale = 0.1 + 0.9 * growth;
+        const scale = 0.1 + 0.9 * smoothstep(0.0, 1.0, growth);
         const depthOffset = -earthRadius * 0.6 * (1.0 - growth);
         
-        const d1 = getNoise(pNorm, seed * 20.0);
-        const d2 = getNoise(pNorm, seed * 45.0 + 15.0);
-        const distortion = (d1 * 0.3 + d2 * 0.15);
-        
-        const rScale = 0.8 + 0.4 * seed;
-        const currentRadius = BASE_RADIUS * rScale * scale * (1.0 + distortion * 0.5);
+        // Noise for irregular coastline
+        const noise = getNoise(pNorm, seed * 12.0);
+        const radiusVar = 1.0 + noise * 0.25;
+        const currentRadius = BASE_RADIUS * scale * radiusVar;
 
-        const dotProd = pNorm.dot(isle.center);
+        const dotProd = pNorm.dot(center);
         const angle = Math.acos(Math.max(-1.0, Math.min(1.0, dotProd)));
         
         if (angle < currentRadius) {
             hasIsland = true;
+            
             const d = angle / currentRadius;
             const t = 1.0 - d;
             
-            // Cliff profile
-            const shapeProfile = smoothstep(0.0, 0.3, t);
+            // Shape Profile: mix of cone and rounded top
+            let profile = smoothstep(0.0, 1.0, t);
+            profile = Math.pow(profile, 0.7);
+
+            // Heights
+            const topH = 2.2 * scale; 
+            const botH = -4.0 * scale; 
             
-            const topH = 1.5 * scale * (0.8 + 0.4 * ((seed * 12.34) % 1));
-            const bottomH = -3.0 * scale;
+            // Detail
+            // Need a vector multiply for noise input
+            const pDetail = pNorm.clone().multiplyScalar(3.0);
+            const detail = getNoise(pDetail, seed + 1.0) * 0.4 * scale * t;
             
-            const baseH = bottomH + (topH - bottomH) * shapeProfile;
-            const surfaceNoise = d1 * 0.3 * scale * shapeProfile;
-            
-            const finalH = depthOffset + baseH + surfaceNoise;
+            // Mix
+            const baseH = botH + (topH - botH) * profile;
+            const finalH = depthOffset + baseH + detail;
             
             if (h === -1000.0) {
                 h = finalH;
