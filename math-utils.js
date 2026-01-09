@@ -97,58 +97,45 @@ export function getIslandHeight(pos, islands, earthRadius) {
     };
 
     for(let i=0; i<islands.length; i++) {
-        const isle = islands[i]; // { center: Vector3, progress: 0..1 }
+        const isle = islands[i];
         
         const seed = hash(isle.center);
-        const rScale = 0.8 + 0.4 * seed; 
-        const hScale = 0.8 + 0.4 * ((seed * 1.23) % 1); 
-
         const growth = isle.progress;
         
-        // Add shape distortion (triple layer for dynamic jagged shape)
-        const d1 = getNoise(pNorm, seed * 20.0);
-        const d2 = getNoise(pNorm, seed * 40.0 + 15.0);
-        const d3 = getNoise(pNorm, seed * 80.0 - 5.0);
-        const distortion = (d1 * 0.35 + d2 * 0.2 + d3 * 0.1);
+        // Match Shader Logic
+        const scale = 0.1 + 0.9 * growth;
+        const depthOffset = -earthRadius * 0.6 * (1.0 - growth);
         
-        // Miniature -> Big Logic
-        const sizeFactor = 0.05 + 0.95 * Math.pow(growth, 0.7); 
-        const noisyRadius = BASE_RADIUS * rScale * (1.0 + distortion) * sizeFactor;
+        const d1 = getNoise(pNorm, seed * 20.0);
+        const d2 = getNoise(pNorm, seed * 45.0 + 15.0);
+        const distortion = (d1 * 0.3 + d2 * 0.15);
+        
+        const rScale = 0.8 + 0.4 * seed;
+        const currentRadius = BASE_RADIUS * rScale * scale * (1.0 + distortion * 0.5);
 
-        // Calculate angular distance
         const dotProd = pNorm.dot(isle.center);
         const angle = Math.acos(Math.max(-1.0, Math.min(1.0, dotProd)));
         
-        if (angle < noisyRadius) {
+        if (angle < currentRadius) {
             hasIsland = true;
-            const d = angle / noisyRadius;
-            
-            // Shape: t goes 1 -> 0
+            const d = angle / currentRadius;
             const t = 1.0 - d;
-            const smoothShape = t * t * (3.0 - 2.0 * t); // Smoothstep
             
-            // Height Noise
-            const heightNoise = (d1 * 0.1 + d2 * 0.05);
+            // Cliff profile
+            const shapeProfile = smoothstep(0.0, 0.3, t);
             
-            // Core shape: center is high, edge is low (underside)
-            // Deep underside for floating island look
-            const minH = -4.0 * sizeFactor;
-            const maxH = 1.2 * sizeFactor * hScale;
+            const topH = 1.5 * scale * (0.8 + 0.4 * ((seed * 12.34) % 1));
+            const bottomH = -3.0 * scale;
             
-            const baseShapeH = minH + (maxH - minH) * Math.pow(smoothShape, 0.5);
-            const finalH = baseShapeH + heightNoise * smoothShape;
+            const baseH = bottomH + (topH - bottomH) * shapeProfile;
+            const surfaceNoise = d1 * 0.3 * scale * shapeProfile;
             
-            // Rise from Core Logic
-            const rise = growth * growth; 
-            const depth = -earthRadius * 0.95 * (1.0 - rise);
-
-            const islandH = depth + finalH;
+            const finalH = depthOffset + baseH + surfaceNoise;
             
-            // Blend islands if overlapping (take max)
             if (h === -1000.0) {
-                h = islandH;
+                h = finalH;
             } else {
-                h = Math.max(h, islandH);
+                h = Math.max(h, finalH);
             }
         }
     }

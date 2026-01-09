@@ -20,57 +20,62 @@ const islandVertexShaderChunk = `
         bool hasIsland = false;
         
         vec3 pNorm = normalize(pos);
-        float BASE_RADIUS = 0.5;
-        float BASE_MAX_H = 1.0;
+        float BASE_RADIUS = 0.6; // Slightly larger base
         
         for(int i=0; i<16; i++) {
             if(length(uIslands[i].xyz) < 0.1) continue;
             
             vec3 center = uIslands[i].xyz;
             float seed = hash(center);
-            float rScale = 0.8 + 0.4 * seed;
-            float hScale = 0.8 + 0.4 * fract(seed * 1.23);
-            
             float growth = uIslands[i].w;
             
-            float d1 = getNoise(pNorm, seed * 20.0);
-            float d2 = getNoise(pNorm, seed * 40.0 + 15.0);
-            float d3 = getNoise(pNorm, seed * 80.0 - 5.0);
-            float distortion = (d1 * 0.35 + d2 * 0.2 + d3 * 0.1);
+            // Animation: Start tiny and deep, grow and rise
+            // Linear growth for better control
+            float scale = 0.1 + 0.9 * growth; 
             
-            float sizeFactor = 0.05 + 0.95 * pow(growth, 0.7); 
-            float noisyRadius = BASE_RADIUS * rScale * (1.0 + distortion) * sizeFactor;
+            // Start deep in core (-60% radius) and rise to surface (0 offset)
+            float depthOffset = -uBaseRadius * 0.6 * (1.0 - growth);
+            
+            // Noise for shape
+            float d1 = getNoise(pNorm, seed * 20.0);
+            float d2 = getNoise(pNorm, seed * 45.0 + 15.0);
+            float distortion = (d1 * 0.3 + d2 * 0.15);
+            
+            float rScale = 0.8 + 0.4 * seed;
+            float currentRadius = BASE_RADIUS * rScale * scale * (1.0 + distortion * 0.5);
 
             float dotProd = dot(pNorm, center);
             float angle = acos(clamp(dotProd, -1.0, 1.0));
             
-            if(angle < noisyRadius) {
+            if(angle < currentRadius) {
                 hasIsland = true;
-                float d = angle / noisyRadius;
                 
-                // More complex shape profile to avoid "straight line" look
+                // Distance from center (0..1)
+                float d = angle / currentRadius;
+                
+                // Cliff-like profile: stays high longer, drops fast at edge
+                // t goes 1.0 (center) -> 0.0 (edge)
                 float t = 1.0 - d;
-                float smoothShape = t * t * (3.0 - 2.0 * t);
                 
-                // Mix in some noise to the height profile itself
-                float heightNoise = (d1 * 0.1 + d2 * 0.05);
+                // Sharper shoulder for cliff look
+                float shapeProfile = smoothstep(0.0, 0.3, t); 
                 
-                // Shape profile allowing for negative underside
-                float minH = -4.0 * sizeFactor;
-                float maxH = 1.2 * sizeFactor * hScale;
+                // Base height structure
+                // High center, deep edges
+                float topH = 1.5 * scale * (0.8 + 0.4 * fract(seed * 12.34));
+                float bottomH = -3.0 * scale; // Deep "roots"
                 
-                float baseShapeH = minH + (maxH - minH) * pow(smoothShape, 0.5);
-                float finalH = baseShapeH + heightNoise * smoothShape;
+                float baseH = mix(bottomH, topH, shapeProfile);
                 
-                float rise = growth * growth; 
-                float depth = -uBaseRadius * 0.95 * (1.0 - rise);
-
-                float islandH = depth + finalH;
+                // Add surface detail noise
+                float surfaceNoise = d1 * 0.3 * scale * shapeProfile;
+                
+                float finalH = depthOffset + baseH + surfaceNoise;
                 
                 if (h == -1000.0) {
-                    h = islandH;
+                    h = finalH;
                 } else {
-                    h = max(h, islandH);
+                    h = max(h, finalH);
                 }
             }
         }
@@ -234,37 +239,25 @@ export const createTerrainLayer = (radius, rippleUniformsRef) => {
             
             if (vHeight < -500.0) discard;
 
-            vec3 cDirt = vec3(0.4, 0.3, 0.2);
-            vec3 cGrass = vec3(0.2, 0.5, 0.1);
-            vec3 cMagma = vec3(0.8, 0.2, 0.0);
-            vec3 cDeepRock = vec3(0.15, 0.1, 0.1);
-            vec3 cDarkEarth = vec3(0.25, 0.2, 0.15);
+            vec3 cDirt = vec3(0.35, 0.25, 0.15);
+            vec3 cGrass = vec3(0.25, 0.6, 0.15);
+            vec3 cRock = vec3(0.15, 0.12, 0.1);
+            vec3 cDeepRock = vec3(0.08, 0.06, 0.05);
 
             vec3 finalColor = vec3(0.0);
             
-            // h > 0 is "surface" (walkable)
-            // h < 0 is "underside" (cliffs/roots)
-            
-            if (vHeight > 0.0) {
-                // Surface: Dirt to Grass
-                float h = vHeight;
-                // Sharp transition at the very edge to avoid blending with cliff color too much
-                finalColor = mix(cDirt, cGrass, smoothstep(0.1, 0.8, h));
+            // Simple layering based on height
+            if (vHeight > 0.3) {
+                // Top Grass
+                finalColor = cGrass;
+            } else if (vHeight > 0.0) {
+                // Beach/Dirt edge
+                finalColor = cDirt;
             } else {
-                // Underside
-                float depth = -vHeight; 
-                
-                // Immediate underside is dark earth/rock (cliff face)
-                // Deeper is magma/core material
-                vec3 cUnderside = mix(cDarkEarth, cDeepRock, smoothstep(0.0, 4.0, depth));
-                cUnderside = mix(cUnderside, cMagma, smoothstep(5.0, 12.0, depth));
-
-                finalColor = cUnderside;
-                
-                // Add a glow/heat effect if very deep (core formation)
-                if (depth > 10.0) {
-                    finalColor += vec3(0.2, 0.05, 0.0) * (depth - 10.0);
-                }
+                // Cliff / Underside
+                float depth = -vHeight;
+                // Gradient from rock to deep dark rock
+                finalColor = mix(cRock, cDeepRock, smoothstep(0.0, 5.0, depth));
             }
             
             gl_FragColor.rgb = finalColor;
