@@ -138,9 +138,14 @@ export class Game {
             this.earth = module.createEarth(this.EARTH_RADIUS, uniformsRef);
             this.scene.add(this.earth);
 
-            // 2. Terrain Layer (Islands)
-            this.terrain = module.createTerrainLayer(this.EARTH_RADIUS, uniformsRef);
-            this.scene.add(this.terrain);
+            // 2. Terrain Layers (Islands)
+            // Top: Gameplay surface (Grass/Sand)
+            this.terrainTop = module.createTerrainLayer(this.EARTH_RADIUS, uniformsRef, 'top');
+            this.scene.add(this.terrainTop);
+            
+            // Bottom: Underside volume (Rock/Magma)
+            this.terrainBottom = module.createTerrainLayer(this.EARTH_RADIUS, uniformsRef, 'bottom');
+            this.scene.add(this.terrainBottom);
             
             // 3. Atmosphere
             this.atmosphere = module.createAtmosphere(this.EARTH_RADIUS);

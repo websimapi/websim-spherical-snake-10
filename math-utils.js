@@ -79,8 +79,7 @@ function smax(a, b, k) {
 export function getIslandHeight(pos, islands, earthRadius) {
     let h = -1000.0; 
     
-    // Reduced base radius to keep islands smaller relative to sphere
-    // Allows for more water and distinct islands
+    // Physics layer only tracks the TOP surface
     const BASE_RADIUS = 0.65; 
     
     const pNorm = pos.clone().normalize();
@@ -91,12 +90,11 @@ export function getIslandHeight(pos, islands, earthRadius) {
         return sinVal - Math.floor(sinVal);
     };
 
-    // Improved noise with multiple frequencies for detail
     const getNoise = (p, seed) => {
         const s = 4.0;
         let n = Math.sin(p.x * s + seed) * Math.cos(p.y * s + seed) * Math.sin(p.z * s);
         n += 0.5 * (Math.sin(p.x * s * 2.0 + seed) * Math.cos(p.y * s * 2.0 + seed) * Math.sin(p.z * s * 2.0));
-        return n * 0.66; // Normalize roughly
+        return n * 0.66;
     };
 
     const smoothstep = (min, max, value) => {
@@ -110,11 +108,9 @@ export function getIslandHeight(pos, islands, earthRadius) {
         const seed = hash(center);
         const growth = isle.progress;
         
-        // Animation
         const scale = 0.05 + 0.95 * smoothstep(0.0, 1.0, growth);
         const depthOffset = -earthRadius * 0.9 * (1.0 - growth);
         
-        // Irregular Coastline
         const noise = getNoise(pNorm, seed * 10.0);
         const radiusVar = 1.0 + noise * 0.3;
         const currentRadius = BASE_RADIUS * scale * radiusVar;
@@ -122,31 +118,24 @@ export function getIslandHeight(pos, islands, earthRadius) {
         const dotProd = pNorm.dot(center);
         const angle = Math.acos(Math.max(-1.0, Math.min(1.0, dotProd)));
         
-        // Calculate raw height for this island
-        // We calculate for a slightly wider range to allow soft blending at edges
         if (angle < currentRadius * 1.5) {
-            const d = angle / currentRadius; // 0 (center) to 1 (edge)
-            const t = Math.max(0, 1.0 - d); // 1 (center) to 0 (edge)
+            const d = angle / currentRadius; 
+            const t = Math.max(0, 1.0 - d); 
             
-            // Profile: Smoother transition
-            // Top: Flat plateau (Plains)
-            const topH = 1.2 * scale * smoothstep(0.3, 0.6, t);
+            // Physics Profile: Matches Top Layer Visuals
+            // Flat plateau that tapers off
+            const topH = 1.2 * scale * smoothstep(0.2, 0.6, t);
             
-            // Bottom: Deep cone (Underside)
-            const underH = -5.0 * scale * (1.0 - smoothstep(0.0, 0.4, t));
-            
-            // Detail
             const detail = getNoise(pNorm.clone().multiplyScalar(15.0), seed + 5.0) * 0.2 * scale * t;
             
-            let finalH = depthOffset + topH + underH + detail;
+            let finalH = depthOffset + topH + detail;
 
-            // Fade out completely at boundaries to prevent hard cuts before blending
+            // Fade edge
             finalH -= (1.0 - smoothstep(0.0, 0.1, t)) * 10.0; 
 
             if (h === -1000.0) {
                 h = finalH;
             } else {
-                // Smooth blend
                 h = smax(h, finalH, 0.5);
             }
         }

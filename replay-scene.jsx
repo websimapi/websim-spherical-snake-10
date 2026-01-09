@@ -88,8 +88,10 @@ const ReplayScene = ({ data, isMuted }) => {
     const r = data.config.initialRadius || 10;
     const earth = createEarth(r, rippleUniforms);
     scene.add(earth);
-    const terrain = createTerrainLayer(r, rippleUniforms);
-    scene.add(terrain);
+    const terrainTop = createTerrainLayer(r, rippleUniforms, "top");
+    scene.add(terrainTop);
+    const terrainBottom = createTerrainLayer(r, rippleUniforms, "bottom");
+    scene.add(terrainBottom);
     const atmosphere = createAtmosphere(r);
     scene.add(atmosphere);
     const { head, tongue } = createSnakeHead();
@@ -98,7 +100,8 @@ const ReplayScene = ({ data, isMuted }) => {
     scene.add(food);
     objectsRef.current = {
       earth,
-      terrain,
+      terrainTop,
+      terrainBottom,
       head,
       tongue,
       food,
@@ -226,7 +229,7 @@ const ReplayScene = ({ data, isMuted }) => {
   return /* @__PURE__ */ jsxDEV(AbsoluteFill, { children: [
     /* @__PURE__ */ jsxDEV("div", { ref: containerRef, style: { width: "100%", height: "100%" } }, void 0, false, {
       fileName: "<stdin>",
-      lineNumber: 295,
+      lineNumber: 299,
       columnNumber: 13
     }),
     /* @__PURE__ */ jsxDEV("div", { style: {
@@ -267,7 +270,7 @@ const ReplayScene = ({ data, isMuted }) => {
           false,
           {
             fileName: "<stdin>",
-            lineNumber: 314,
+            lineNumber: 318,
             columnNumber: 21
           }
         ),
@@ -285,12 +288,12 @@ const ReplayScene = ({ data, isMuted }) => {
           whiteSpace: "nowrap"
         }, children: playerInfo.username }, void 0, false, {
           fileName: "<stdin>",
-          lineNumber: 330,
+          lineNumber: 334,
           columnNumber: 21
         })
       ] }, void 0, true, {
         fileName: "<stdin>",
-        lineNumber: 308,
+        lineNumber: 312,
         columnNumber: 17
       }),
       /* @__PURE__ */ jsxDEV("div", { style: {
@@ -302,29 +305,29 @@ const ReplayScene = ({ data, isMuted }) => {
         marginTop: "10px"
       }, children: score }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 346,
+        lineNumber: 350,
         columnNumber: 17
       })
     ] }, void 0, true, {
       fileName: "<stdin>",
-      lineNumber: 298,
+      lineNumber: 302,
       columnNumber: 13
     }),
     activeCues.map((cue) => {
       const duration = cue.name === "die" ? 150 : 30;
       return /* @__PURE__ */ jsxDEV(Sequence, { from: cue.frame, durationInFrames: duration, children: /* @__PURE__ */ jsxDEV(Audio, { src: cue.src, volume: isMuted ? 0 : 1 }, void 0, false, {
         fileName: "<stdin>",
-        lineNumber: 362,
+        lineNumber: 366,
         columnNumber: 25
       }) }, cue.id, false, {
         fileName: "<stdin>",
-        lineNumber: 361,
+        lineNumber: 365,
         columnNumber: 21
       });
     })
   ] }, void 0, true, {
     fileName: "<stdin>",
-    lineNumber: 294,
+    lineNumber: 298,
     columnNumber: 9
   });
 };
