@@ -85,9 +85,9 @@ export function getIslandHeight(pos, islands, earthRadius) {
         return sinVal - Math.floor(sinVal);
     };
 
-    // Match GLSL Noise (Simple 3D sine mix) with variable frequency scale
-    const getNoise = (p, scale, seed) => {
-        const s = 6.0 * scale;
+    // Match GLSL Noise (Simple 3D sine mix)
+    const getNoise = (p, seed) => {
+        const s = 6.0;
         return Math.sin(p.x * s + seed) * Math.cos(p.y * s + seed) * Math.sin(p.z * s);
     };
 
@@ -105,16 +105,13 @@ export function getIslandHeight(pos, islands, earthRadius) {
 
         const growth = isle.progress;
         
-        // Add shape distortion (multi-layer for dynamic shape)
-        // Matches shader: Low freq (0.5x), Med (1.0x), High (2.0x)
-        const dLow = getNoise(pNorm, 0.5, seed * 4.0);
-        const dMed = getNoise(pNorm, 1.0, seed * 12.0 + 10.0);
-        const dHigh = getNoise(pNorm, 2.0, seed * 25.0 + 20.0);
+        // Add shape distortion (double layer for dynamic shape)
+        const d1 = getNoise(pNorm, seed * 15.0);
+        const d2 = getNoise(pNorm, seed * 30.0 + 4.0);
+        const distortion = (d1 * 0.25 + d2 * 0.15);
         
-        const distortion = (dLow * 0.4 + dMed * 0.15 + dHigh * 0.05);
-        
-        // Miniature -> Big Logic: Start very small, cubic growth curve
-        const sizeFactor = 0.01 + 0.99 * Math.pow(growth, 3.0); 
+        // Miniature -> Big Logic
+        const sizeFactor = 0.05 + 0.95 * Math.pow(growth, 0.7); 
         const noisyRadius = BASE_RADIUS * rScale * (1.0 + distortion) * sizeFactor;
 
         // Calculate angular distance
