@@ -254,8 +254,8 @@ export class Game {
             const island = this.islands[i];
             if (island.progress < 1.0) {
                 isGrowingAnyIsland = true;
-                // Much slower oozing to appreciate the rising-from-core effect
-                island.progress += dt * 0.05; 
+                // Slower oozing, but fast enough to see it emerge eventually
+                island.progress += dt * 0.08; 
                 if (island.progress > 1.0) island.progress = 1.0;
                 
                 // Update Uniform

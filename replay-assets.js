@@ -11,7 +11,7 @@ const islandVertexShaderChunk = `
     }
 
     float getNoise(vec3 p, float seed) {
-        float s = 4.0;
+        float s = 6.0;
         return sin(p.x * s + seed) * cos(p.y * s + seed) * sin(p.z * s);
     }
 
@@ -33,9 +33,15 @@ const islandVertexShaderChunk = `
             
             float growth = uIslands[i].w;
             
-            float distortion = getNoise(pNorm, seed * 10.0) * 0.3;
+            // Dynamic shape with multiple frequencies
+            float dLow = getNoise(pNorm * 0.5, seed * 4.0);
+            float dMed = getNoise(pNorm, seed * 12.0 + 10.0);
+            float dHigh = getNoise(pNorm * 2.0, seed * 25.0 + 20.0);
             
-            float sizeFactor = 0.2 + 0.8 * growth; 
+            float distortion = (dLow * 0.4 + dMed * 0.15 + dHigh * 0.05);
+            
+            // Start very small, slow initial growth (cubic curve)
+            float sizeFactor = 0.01 + 0.99 * pow(growth, 3.0); 
             float noisyRadius = BASE_RADIUS * rScale * (1.0 + distortion) * sizeFactor;
 
             float dotProd = dot(pNorm, center);
@@ -47,7 +53,7 @@ const islandVertexShaderChunk = `
                 
                 float t = 1.0 - d;
                 float smoothShape = t * t * (3.0 - 2.0 * t);
-                float finalShape = pow(smoothShape, 0.5);
+                float finalShape = pow(smoothShape, 0.8);
                 
                 float rise = growth * growth; 
                 float depth = -uBaseRadius * 0.9 * (1.0 - rise);
@@ -175,7 +181,7 @@ export const createEarth = (radius, rippleUniformsRef) => {
 };
 
 export const createTerrainLayer = (radius, rippleUniformsRef) => {
-    const geo = new THREE.SphereGeometry(radius, 64, 64);
+    const geo = new THREE.SphereGeometry(radius, 128, 128);
     const mat = new THREE.MeshStandardMaterial({
         color: 0xffffff,
         roughness: 0.9,
