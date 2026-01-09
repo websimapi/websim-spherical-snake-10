@@ -254,8 +254,8 @@ export class Game {
             const island = this.islands[i];
             if (island.progress < 1.0) {
                 isGrowingAnyIsland = true;
-                // Slower oozing, but fast enough to see it emerge eventually
-                island.progress += dt * 0.08; 
+                // Float up speed
+                island.progress += dt * 0.15; 
                 if (island.progress > 1.0) island.progress = 1.0;
                 
                 // Update Uniform

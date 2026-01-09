@@ -101,8 +101,8 @@ export function getIslandHeight(pos, islands, earthRadius) {
         const growth = isle.progress;
         
         // Match Shader Logic
-        const scale = 0.1 + 0.9 * smoothstep(0.0, 1.0, growth);
-        const depthOffset = -earthRadius * 0.6 * (1.0 - growth);
+        const scale = 0.05 + 0.95 * smoothstep(0.0, 1.0, growth);
+        const depthOffset = -earthRadius * 0.9 * (1.0 - growth);
         
         // Noise for irregular coastline
         const noise = getNoise(pNorm, seed * 12.0);
@@ -118,18 +118,17 @@ export function getIslandHeight(pos, islands, earthRadius) {
             const d = angle / currentRadius;
             const t = 1.0 - d;
             
-            // Shape Profile: mix of cone and rounded top
+            // Shape Profile: Bulky (convex)
             let profile = smoothstep(0.0, 1.0, t);
-            profile = Math.pow(profile, 0.7);
+            profile = Math.pow(profile, 0.4);
 
             // Heights
-            const topH = 2.2 * scale; 
-            const botH = -4.0 * scale; 
+            const topH = 3.5 * scale; 
+            const botH = -2.5 * scale; 
             
             // Detail
-            // Need a vector multiply for noise input
-            const pDetail = pNorm.clone().multiplyScalar(3.0);
-            const detail = getNoise(pDetail, seed + 1.0) * 0.4 * scale * t;
+            const pDetail = pNorm.clone().multiplyScalar(4.0);
+            const detail = getNoise(pDetail, seed + 1.0) * 0.5 * scale * t;
             
             // Mix
             const baseH = botH + (topH - botH) * profile;

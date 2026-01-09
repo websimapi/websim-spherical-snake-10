@@ -30,8 +30,12 @@ const islandVertexShaderChunk = `
             float growth = uIslands[i].w;
             
             // Animation
-            float scale = 0.1 + 0.9 * smoothstep(0.0, 1.0, growth);
-            float depthOffset = -uBaseRadius * 0.6 * (1.0 - growth);
+            // Start very small (miniature) and grow to full size
+            float scale = 0.05 + 0.95 * smoothstep(0.0, 1.0, growth);
+            
+            // Start deep in core (offset) and float up
+            // At growth 0, we want it deep.
+            float depthOffset = -uBaseRadius * 0.9 * (1.0 - growth);
             
             // Noise for irregular coastline
             float noise = getNoise(pNorm, seed * 12.0);
@@ -47,18 +51,23 @@ const islandVertexShaderChunk = `
                 float d = angle / currentRadius; // 0..1
                 float t = 1.0 - d; // 1..0 (1 is center)
                 
-                // Shape Profile: mix of cone and rounded top
+                // Shape Profile: Bulky floating island (Plateau top, steep sides)
+                // t goes 0 (edge) -> 1 (center)
                 float profile = smoothstep(0.0, 1.0, t);
-                profile = pow(profile, 0.7); // Rounded top, tapering sides
+                profile = pow(profile, 0.4); // Push curve out to make it bulkier/convex
 
                 // Heights
-                float topH = 2.2 * scale; 
-                float botH = -4.0 * scale; // Deep floating root
+                float topH = 3.5 * scale; 
+                float botH = -2.5 * scale; // Less deep, more like a chunk
                 
                 // Detail
-                float detail = getNoise(pNorm * 3.0, seed + 1.0) * 0.4 * scale * t;
+                float detail = getNoise(pNorm * 4.0, seed + 1.0) * 0.5 * scale * t;
                 
                 float baseH = mix(botH, topH, profile);
+                
+                // Start very small and deep
+                // When growth is 0: scale is tiny, depth is deep
+                // depthOffset needs to put it inside the core
                 float finalH = depthOffset + baseH + detail;
                 
                 if (h == -1000.0) {
@@ -192,6 +201,8 @@ export const createTerrainLayer = (radius, rippleUniformsRef) => {
     mat.onBeforeCompile = (shader) => {
         const uniforms = rippleUniformsRef.current;
         shader.uniforms.uIslands = uniforms.uIslands;
+        // Ensure backface (inside of island) looks like rock, not invisible/weird
+        shader.side = THREE.DoubleSide;
         shader.uniforms.uBaseRadius = uniforms.uBaseRadius;
 
         shader.vertexShader = islandVertexShaderChunk + shader.vertexShader;
@@ -229,32 +240,36 @@ export const createTerrainLayer = (radius, rippleUniformsRef) => {
             
             if (vHeight < -500.0) discard;
 
-            vec3 cGrass = vec3(0.2, 0.7, 0.15);
-            vec3 cSand = vec3(0.94, 0.85, 0.6); // Warm Sand
-            vec3 cDirt = vec3(0.4, 0.3, 0.2);
-            vec3 cRock = vec3(0.25, 0.22, 0.2);
-            vec3 cDeep = vec3(0.1, 0.05, 0.02);
-            vec3 cMagma = vec3(1.0, 0.3, 0.0);
+            vec3 cGrass = vec3(0.2, 0.6, 0.1);
+            vec3 cSand = vec3(0.9, 0.8, 0.5); 
+            vec3 cRock = vec3(0.3, 0.25, 0.22);
+            vec3 cUnderbelly = vec3(0.15, 0.1, 0.08); // Dark Rock
+            vec3 cMagma = vec3(1.0, 0.2, 0.0);
 
             vec3 finalColor = vec3(0.0);
             
-            if (vHeight > 0.5) {
+            // Visual logic based on height
+            if (vHeight > 0.8) {
                 finalColor = cGrass;
-            } else if (vHeight > 0.15) {
+            } else if (vHeight > 0.0) {
+                // Beach line
                 finalColor = cSand;
-            } else if (vHeight > -0.5) {
-                finalColor = cDirt;
             } else {
+                // Underside
                 float depth = -vHeight;
-                // Transition to rock then deep underbelly
-                finalColor = mix(cRock, cDeep, smoothstep(0.5, 3.0, depth));
+                finalColor = mix(cRock, cUnderbelly, smoothstep(0.0, 2.0, depth));
                 
-                // Magma core glow
+                // Core heat glow (subtle, only very deep)
                 if (depth > 2.0) {
-                    float glow = smoothstep(2.0, 4.5, depth);
-                    finalColor = mix(finalColor, cMagma, glow * 0.6);
-                    finalColor += cMagma * glow * 0.3; // Emissive boost
+                   float heat = smoothstep(2.0, 5.0, depth);
+                   finalColor = mix(finalColor, cMagma, heat * 0.5);
                 }
+            }
+
+            // Simple fake lighting for underside to prevent "concave" look flat shading
+            // We darken the color based on how deep it is to simulate occlusion
+            if (vHeight < 0.0) {
+                finalColor *= 0.6; 
             }
             
             gl_FragColor.rgb = finalColor;
